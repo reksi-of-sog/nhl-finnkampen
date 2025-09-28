@@ -20,9 +20,9 @@ create index if not exists players_birth_country_idx on nhl.players(birth_countr
 -- 3. TEAMS (minimal for joins if needed later)
 create table if not exists nhl.teams (
   id bigserial primary key,
-  nhl_id integer unique not null,
-  name text not null,
-  tri_code text,
+  nhl_id bigint not null unique,
+  name varchar(255),
+  tricode varchar(3),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -32,6 +32,7 @@ create index if not exists teams_nhl_id_idx on nhl.teams(nhl_id);
 -- 4. GAMES
 create table if not exists nhl.games (
   id bigserial primary key,
+  game_type varchar(2), -- PR, R, P
   nhl_game_pk bigint unique not null,   -- NHL's unique game id
   game_date date not null,
   season text not null,                 -- e.g., "20242025"
@@ -49,14 +50,11 @@ create index if not exists games_pk_idx on nhl.games(nhl_game_pk);
 create table if not exists nhl.player_game_stats (
   id bigserial primary key,
   game_id bigint not null references nhl.games(id) on delete cascade,
-  nhl_game_pk bigint not null,                       -- denormalized for quick lookups
   player_id bigint not null references nhl.players(id) on delete cascade,
   team_id bigint references nhl.teams(id),
-  is_goalie boolean not null default false,
   -- Skater stats
-  goals int default 0,
-  assists int default 0,
-  points int generated always as (coalesce(goals,0)+coalesce(assists,0)) stored,
+  goals int,
+  assists int,
   shots int,
   pim int,  -- penalties in minutes
   toi text, -- time on ice e.g. "18:23"
@@ -65,16 +63,15 @@ create table if not exists nhl.player_game_stats (
   shots_against int,
   goals_against int,
   decision text,  -- W/L/OT
-  shutout boolean,
   -- meta
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  unique (player_id, nhl_game_pk)
+  unique (game_id, player_id) -- THIS LINE IS THE FIX
 );
 
 create index if not exists pgs_game_idx on nhl.player_game_stats(game_id);
 create index if not exists pgs_player_idx on nhl.player_game_stats(player_id);
-create index if not exists pgs_nhl_game_pk_idx on nhl.player_game_stats(nhl_game_pk);
+
 
 -- 6. NIGHTLY NATIONALITY AGGREGATES
 create table if not exists nhl.nightly_nation_agg (
@@ -98,6 +95,7 @@ create table if not exists nhl.season_nation_agg (
   id bigserial primary key,
   season text not null,
   nation text not null check (nation in ('FIN','SWE')),
+  game_type varchar(2) not null,
   goals int not null default 0,
   assists int not null default 0,
   points int generated always as (coalesce(goals,0)+coalesce(assists,0)) stored,
@@ -105,7 +103,7 @@ create table if not exists nhl.season_nation_agg (
   shutouts int not null default 0,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  unique (season, nation)
+  unique (season, nation, game_type)
 );
 
 create index if not exists season_agg_season_idx on nhl.season_nation_agg(season);
@@ -139,21 +137,27 @@ begin
 end;
 $$ language plpgsql;
 
+DROP TRIGGER IF EXISTS t_players_uat ON nhl.players;
 create trigger t_players_uat before update on nhl.players
 for each row execute function nhl.touch_updated_at();
 
+DROP TRIGGER IF EXISTS t_teams_uat ON nhl.teams;
 create trigger t_teams_uat before update on nhl.teams
 for each row execute function nhl.touch_updated_at();
 
+DROP TRIGGER IF EXISTS t_games_uat ON nhl.games;
 create trigger t_games_uat before update on nhl.games
 for each row execute function nhl.touch_updated_at();
 
+DROP TRIGGER IF EXISTS t_pgs_uat ON nhl.player_game_stats;
 create trigger t_pgs_uat before update on nhl.player_game_stats
 for each row execute function nhl.touch_updated_at();
 
+DROP TRIGGER IF EXISTS t_night_uat ON nhl.nightly_nation_agg;
 create trigger t_night_uat before update on nhl.nightly_nation_agg
 for each row execute function nhl.touch_updated_at();
 
+DROP TRIGGER IF EXISTS t_season_uat ON nhl.season_nation_agg;
 create trigger t_season_uat before update on nhl.season_nation_agg
 for each row execute function nhl.touch_updated_at();
 

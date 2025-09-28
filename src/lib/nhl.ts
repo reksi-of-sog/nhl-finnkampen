@@ -4,24 +4,30 @@
 type Json = any;
 
 // ---------- SCHEDULE (ONLY the exact date’s game IDs) ----------
-export async function fetchScheduleIdsForDate(dateISO: string): Promise<number[]> {
+// This function has been updated to return the game type along with the ID.
+export async function fetchScheduleIdsForDate(dateISO: string): Promise<{id: number, gameType: string}[]> {
   const url = `https://api-web.nhle.com/v1/schedule/${dateISO}`;
   const res = await fetch(url);
-  if (!res.ok) throw new Error(`schedule ${dateISO} HTTP ${res.status}`);
-  const json: Json = await res.json();
-
-  // The payload is a "week" block; filter by that exact day.
-  const out: number[] = [];
-  const weeks = json?.gameWeek ?? [];
-  for (const wk of weeks) {
-    const wkDate = String(wk?.date ?? '').slice(0, 10);
-    if (wkDate !== dateISO) continue;
-    for (const g of wk?.games ?? []) {
-      const id = g?.id ?? g?.gameId ?? g?.gamePk;
-      if (typeof id === 'number') out.push(id);
-    }
+  if (!res.ok) {
+    console.error(`[nhl] failed to fetch schedule for ${dateISO}: ${res.status}`);
+    return [];
   }
-  return out;
+  const json = await res.json();
+  // The API returns the requested date as the first element in the gameWeek array.
+  const games = json?.gameWeek?.[0]?.games ?? [];
+
+  // Maps the numeric gameType from the API to a simple string code.
+  const gameTypeMap: {[key: number]: string} = {
+    1: 'PR', // Pre-season (Exhibition)
+    2: 'PR', // Pre-season
+    3: 'R',  // Regular Season
+    4: 'P',  // Playoffs
+  };
+
+  return games.map((g: any) => ({
+    id: g.id,
+    gameType: gameTypeMap[g.gameType] || 'UKN', // UKN for unknown
+  }));
 }
 
 // ---------- BOXSCORE ----------

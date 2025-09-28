@@ -1,6 +1,6 @@
 // src/ingest.ts
 import 'dotenv/config';
-import { withTx, pool } from './lib/db';
+import { withTx } from './lib/db.js';
 import {
   fetchScheduleIdsForDate,
   fetchBoxscore,
@@ -9,8 +9,7 @@ import {
   birthCountryFromLanding,
   extractPlayerRowsFromBoxscore,
   tallyFromBoxscoreSummary,
-  type PlayerTallies,
-} from './lib/nhl';
+} from './lib/nhl.js';
 
 function arg(name: string, def: string): string {
   const i = process.argv.indexOf(name);
@@ -25,257 +24,139 @@ function seasonFromDate(d: string) {
 
 async function main() {
   const date = arg('--date', new Date().toISOString().slice(0, 10));
-  const gameIds = await fetchScheduleIdsForDate(date);
-  console.log(`[ingest] ${gameIds.length} game(s) on ${date}`);
+  const games = await fetchScheduleIdsForDate(date);
+  console.log(`[ingest] ${games.length} game(s) on ${date}`);
 
   const natCache = new Map<number, string | null>();
   let sessionWrote = 0;
 
   await withTx(async (tx) => {
-    for (let i = 0; i < gameIds.length; i++) {
-      const gamePk = gameIds[i];
-      console.log(`[ingest] Processing game ${i + 1}/${gameIds.length} (id=${gamePk})`);
+    for (let i = 0; i < games.length; i++) {
+      // This is the line that fixes the error.
+      // It correctly unpacks the id and gameType from the object.
+      const { id: gamePk, gameType } = games[i];
+      console.log(`[ingest] Processing game ${i + 1}/${games.length} (id=${gamePk}, type=${gameType})`);
 
       // 1) Boxscore → meta (teams/date)
       const box = await fetchBoxscore(gamePk);
-      // console.log('DEBUG BOX:', JSON.stringify(box, null, 2).slice(0, 2000));
       const meta = teamMetaFromBox(box);
       const season = seasonFromDate(meta.gameDate || date);
-
-      const homeTeamId = await upsertTeamReturnId(tx, meta.home.nhl_id, meta.home.name, meta.home.abbr);
-      const awayTeamId = await upsertTeamReturnId(tx, meta.away.nhl_id, meta.away.name, meta.away.abbr);
+      const homeId = await upsertTeamReturnId(tx, meta.home.nhl_id, meta.home.name, meta.home.abbr);
+      const awayId = await upsertTeamReturnId(tx, meta.away.nhl_id, meta.away.name, meta.away.abbr);
       const gameId = await upsertGameReturnId(tx, {
-        nhl_game_pk: Number(gamePk),
+        nhl_game_pk: gamePk,
         game_date: meta.gameDate || date,
         season,
-        home_team_id: homeTeamId,
-        away_team_id: awayTeamId,
-        status: null,
+        game_type: gameType,
+        home_team_id: homeId,
+        away_team_id: awayId,
+        status: box.gameState,
       });
 
-      // 2) Prefer detailed roster stats (playerByGameStats.*); fallback to summary GA tallies
-      const rosterRows = extractPlayerRowsFromBoxscore(box);
+      // 2) Player stats
+      const playerRows = extractPlayerRowsFromBoxscore(box);
       let wrote = 0;
-
-      if (rosterRows.length > 0) {
-        console.log(`  [roster] rows=${rosterRows.length}`);
-        for (const r of rosterRows) {
-          const nhl_id = r.playerId;
-
-          // nationality (cache landing)
-          let nat = natCache.get(nhl_id) ?? null;
-          if (!natCache.has(nhl_id)) {
-            try {
-              const landing = await fetchPlayerLanding(nhl_id);
-              nat = birthCountryFromLanding(landing);
-            } catch { nat = null; }
-            natCache.set(nhl_id, nat);
+      if (playerRows.length > 0) {
+        console.log(`  [boxscore] rows=${playerRows.length}`);
+        for (const r of playerRows) {
+          let nat = natCache.get(r.playerId);
+          if (nat === undefined) {
+            const landing = await fetchPlayerLanding(r.playerId);
+            nat = birthCountryFromLanding(landing);
+            natCache.set(r.playerId, nat);
           }
-
-          const playerDb = await upsertPlayerReturnId(tx, nhl_id, r.name ?? `Player ${nhl_id}`, nat);
-
-          await upsertPlayerGameStats(tx, {
-            game_id: gameId,
-            nhl_game_pk: Number(gamePk),
-            player_id: playerDb.id,
-            team_id: null,                 // optional; not needed for FIN/SWE rollups
-            is_goalie: !!r.isGoalie,
-            goals: nz(r.goals),
-            assists: nz(r.assists),
-            shots: nz(r.shots),
-            pim: nz(r.pim),
-            toi: r.toi ?? null,
-            saves: nz(r.saves),
-            shots_against: nz(r.shotsAgainst),
-            goals_against: nz(r.goalsAgainst),
-            decision: r.decision ?? null,
-            shutout: r.isGoalie && r.shotsAgainst != null && r.goalsAgainst === 0 ? true : null,
-          });
+          if (!nat) continue;
+          const pid = await upsertPlayerReturnId(tx, r.playerId, r.name || '?', nat);
+          await upsertPlayerGameStats(tx, { ...r, game_id: gameId, player_id: pid });
           wrote++;
         }
       } else {
-        const tallies: PlayerTallies = tallyFromBoxscoreSummary(box);
+        // Fallback to summary if playerByGameStats is empty
+        const tallies = tallyFromBoxscoreSummary(box);
         console.log(`  [summary] unique players with G/A: ${Object.keys(tallies).length}`);
-
-        for (const pidStr of Object.keys(tallies)) {
-          const nhl_id = Number(pidStr);
-          const t = tallies[nhl_id];
-
-          let nat = natCache.get(nhl_id) ?? null;
-          if (!natCache.has(nhl_id)) {
-            try {
-              const landing = await fetchPlayerLanding(nhl_id);
-              nat = birthCountryFromLanding(landing);
-            } catch { nat = null; }
-            natCache.set(nhl_id, nat);
+        for (const playerId of Object.keys(tallies).map(Number)) {
+          let nat = natCache.get(playerId);
+          if (nat === undefined) {
+            const landing = await fetchPlayerLanding(playerId);
+            nat = birthCountryFromLanding(landing);
+            natCache.set(playerId, nat);
           }
-
-          const playerDb = await upsertPlayerReturnId(tx, nhl_id, t.name ?? `Player ${nhl_id}`, nat);
-
+          if (!nat) continue;
+          const t = tallies[playerId];
+          const pid = await upsertPlayerReturnId(tx, playerId, t.name || '?', nat);
           await upsertPlayerGameStats(tx, {
             game_id: gameId,
-            nhl_game_pk: Number(gamePk),
-            player_id: playerDb.id,
-            team_id: null,
-            is_goalie: false,
+            player_id: pid,
             goals: t.goals,
             assists: t.assists,
-            shots: null,
-            pim: null,
-            toi: null,
-            saves: null,
-            shots_against: null,
-            goals_against: null,
-            decision: null,
-            shutout: null,
           });
           wrote++;
         }
       }
-
       console.log(`  [insert] wrote/updated ${wrote} rows for game ${gamePk}`);
       sessionWrote += wrote;
     }
 
     // 3) Aggregates for the date + season (FIN/SWE)
-    await tx.query(`delete from nhl.nightly_nation_agg where game_date = $1`, [date]);
-    await tx.query(
-      `
-      insert into nhl.nightly_nation_agg (game_date, nation, goals, assists, goalie_wins, shutouts)
-      select
-        $1 as game_date,
-        nation,
-        coalesce(sum(goals),0),
-        coalesce(sum(assists),0),
-        0, 0
-      from (
-        select pgs.*,
-               case
-                 when no.nation is not null then no.nation
-                 when upper(pl.birth_country) like 'FIN%' then 'FIN'
-                 when upper(pl.birth_country) like 'SWE%' then 'SWE'
-                 else null
-               end as nation
-        from nhl.player_game_stats pgs
-        join nhl.players pl on pl.id = pgs.player_id
-        left join nhl.nationality_overrides no on no.player_id = pl.id
-        join nhl.games g on g.id = pgs.game_id
-        where g.game_date = $1
-      ) t
-      where nation in ('FIN','SWE')
-      group by nation
-      `,
-      [date]
-    );
-
-    const season = seasonFromDate(date);
-    await tx.query(`delete from nhl.season_nation_agg where season = $1`, [season]);
-    await tx.query(
-      `
-      insert into nhl.season_nation_agg (season, nation, goals, assists, goalie_wins, shutouts)
-      select
-        $1 as season,
-        nation,
-        coalesce(sum(goals),0),
-        coalesce(sum(assists),0),
-        0, 0
-      from (
-        select pgs.*,
-               case
-                 when no.nation is not null then no.nation
-                 when upper(pl.birth_country) like 'FIN%' then 'FIN'
-                 when upper(pl.birth_country) like 'SWE%' then 'SWE'
-                 else null
-               end as nation
-        from nhl.player_game_stats pgs
-        join nhl.players pl on pl.id = pgs.player_id
-        left join nhl.nationality_overrides no on no.player_id = pl.id
-        join nhl.games g on g.id = pgs.game_id
-        where g.season = $1
-      ) t
-      where nation in ('FIN','SWE')
-      group by nation
-      `,
-      [season]
-    );
+    await computeNightlyAgg(tx, date);
+    await computeSeasonAgg(tx, date);
   });
 
   console.log(`[ingest] Done for ${date} (session wrote ${sessionWrote})`);
-  await pool.end();
 }
 
 function nz(v: any): number | null {
-  if (v === undefined || v === null) return null;
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
 }
 
 // ---------- DB helpers (your schema) ----------
 async function upsertTeamReturnId(tx: any, nhl_id: number, name: string, tri: string) {
-  const { rows } = await tx.query(
-    `
-    insert into nhl.teams (nhl_id, name, tri_code)
-    values ($1,$2,$3)
-    on conflict (nhl_id) do update
-      set name = excluded.name, tri_code = excluded.tri_code, updated_at = now()
-    returning id
-    `,
-    [nhl_id || null, name || null, tri || null]
-  );
-  return rows[0].id as number;
+  const q = `
+    insert into nhl.teams (nhl_id, name, tricode) values ($1, $2, $3)
+    on conflict (nhl_id) do update set name = excluded.name, tricode = excluded.tricode
+    returning id`;
+  const res = await tx.query(q, [nhl_id, name, tri]);
+  return res.rows[0].id;
 }
 
 async function upsertGameReturnId(tx: any, g: {
-  nhl_game_pk: number; game_date: string; season: string;
+  nhl_game_pk: number; game_date: string; season: string; game_type: string;
   home_team_id: number | null; away_team_id: number | null; status: string | null;
 }) {
-  const { rows } = await tx.query(
-    `
-    insert into nhl.games (nhl_game_pk, game_date, season, home_team_id, away_team_id, status)
-    values ($1,$2,$3,$4,$5,$6)
-    on conflict (nhl_game_pk) do update
-      set game_date = excluded.game_date,
-          season = excluded.season,
-          home_team_id = excluded.home_team_id,
-          away_team_id = excluded.away_team_id,
-          status = excluded.status,
-          updated_at = now()
-    returning id
-    `,
-    [g.nhl_game_pk, g.game_date, g.season, g.home_team_id, g.away_team_id, g.status]
-  );
-  return rows[0].id as number;
+  const q = `
+    insert into nhl.games (nhl_game_pk, game_date, season, game_type, home_team_id, away_team_id, status)
+    values ($1, $2, $3, $4, $5, $6, $7)
+    on conflict (nhl_game_pk) do update set
+      game_date = excluded.game_date,
+      status = excluded.status,
+      updated_at = now()
+    returning id`;
+  const res = await tx.query(q, [g.nhl_game_pk, g.game_date, g.season, g.game_type, g.home_team_id, g.away_team_id, g.status]);
+  return res.rows[0].id;
 }
 
 async function upsertPlayerReturnId(tx: any, nhl_id: number, full_name: string, birth_country: string | null) {
-  const { rows } = await tx.query(
-    `
-    insert into nhl.players (nhl_id, full_name, birth_country)
-    values ($1,$2,$3)
-    on conflict (nhl_id) do update
-      set full_name = excluded.full_name,
-          birth_country = coalesce(nhl.players.birth_country, excluded.birth_country),
-          updated_at = now()
-    returning id
-    `,
-    [nhl_id, full_name || `Player ${nhl_id}`, birth_country]
-  );
-  return rows[0];
+  const q = `
+    insert into nhl.players (nhl_id, full_name, birth_country) values ($1, $2, $3)
+    on conflict (nhl_id) do update set
+      full_name = excluded.full_name,
+      birth_country = excluded.birth_country,
+      updated_at = now()
+    returning id`;
+  const res = await tx.query(q, [nhl_id, full_name, birth_country]);
+  return res.rows[0].id;
 }
 
 async function upsertPlayerGameStats(tx: any, s: any) {
-  await tx.query(
-    `
-    insert into nhl.player_game_stats
-      (game_id, nhl_game_pk, player_id, team_id, is_goalie,
-       goals, assists, shots, pim, toi,
-       saves, shots_against, goals_against, decision, shutout)
-    values
-      ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
-    on conflict (player_id, nhl_game_pk) do update set
-      game_id = excluded.game_id,
+  const q = `
+    insert into nhl.player_game_stats (
+      game_id, player_id, team_id,
+      goals, assists, shots, pim, toi,
+      saves, shots_against, goals_against, decision
+    ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+    on conflict (game_id, player_id) do update set
       team_id = excluded.team_id,
-      is_goalie = excluded.is_goalie,
       goals = excluded.goals,
       assists = excluded.assists,
       shots = excluded.shots,
@@ -285,15 +166,62 @@ async function upsertPlayerGameStats(tx: any, s: any) {
       shots_against = excluded.shots_against,
       goals_against = excluded.goals_against,
       decision = excluded.decision,
-      shutout = excluded.shutout,
       updated_at = now()
-    `,
-    [
-      s.game_id, s.nhl_game_pk, s.player_id, s.team_id, s.is_goalie,
-      s.goals, s.assists, s.shots, s.pim, s.toi,
-      s.saves, s.shots_against, s.goals_against, s.decision, s.shutout
-    ]
-  );
+  `;
+  await tx.query(q, [
+    s.game_id, s.player_id, s.team_id,
+    nz(s.goals), nz(s.assists), nz(s.shots), nz(s.pim), s.toi,
+    nz(s.saves), nz(s.shotsAgainst), nz(s.goalsAgainst), s.decision,
+  ]);
 }
 
-main().catch((e) => { console.error(e); process.exit(1); });
+async function computeNightlyAgg(client: any, date: string) {
+  const q = `
+    insert into nhl.nightly_nation_agg (game_date, nation, goals, assists, goalie_wins)
+    select
+      g.game_date,
+      p.birth_country,
+      coalesce(sum(s.goals), 0) as goals,
+      coalesce(sum(s.assists), 0) as assists,
+      coalesce(sum(case when s.decision = 'W' then 1 else 0 end), 0) as goalie_wins
+    from nhl.player_game_stats s
+    join nhl.games g on s.game_id = g.id
+    join nhl.players p on s.player_id = p.id
+    where g.game_date = $1 and p.birth_country in ('FIN', 'SWE')
+    group by g.game_date, p.birth_country
+    on conflict (game_date, nation) do update set
+      goals = excluded.goals,
+      assists = excluded.assists,
+      goalie_wins = excluded.goalie_wins,
+      updated_at = now()
+  `;
+  await client.query(q, [date]);
+}
+
+async function computeSeasonAgg(client: any, date: string) {
+  const season = seasonFromDate(date);
+  const q = `
+    insert into nhl.season_nation_agg (season, nation, game_type, goals, assists)
+    select
+      g.season,
+      p.birth_country,
+      g.game_type,
+      coalesce(sum(s.goals), 0) as goals,
+      coalesce(sum(s.assists), 0) as assists
+    from nhl.player_game_stats s
+    join nhl.games g on s.game_id = g.id
+    join nhl.players p on s.player_id = p.id
+    where g.season = $1 and p.birth_country in ('FIN', 'SWE') and g.game_type is not null
+    group by g.season, p.birth_country, g.game_type
+    on conflict (season, nation, game_type) do update set
+      goals = excluded.goals,
+      assists = excluded.assists,
+      updated_at = now()
+  `;
+  await client.query(q, [season]);
+}
+
+main().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});
