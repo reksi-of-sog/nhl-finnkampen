@@ -1,12 +1,10 @@
-# filepath: .github/workflows/daily-bot.yml
 name: Daily NHL Bot Run
 
 on:
   schedule:
-    # Runs every day at 06:00 UTC (e.g., 8 AM in Finland/Sweden during DST)
-    # Adjust the cron expression if you need a different time.
-    # For example, '0 4 * * *' for 04:00 UTC.
-    - cron: '0 6 * * *'
+    # Runs every day at 08:00 UTC.
+    # This will be 11:00 AM in Finland during EEST (UTC+3) and 10:00 AM during EET (UTC+2).
+    - cron: '0 8 * * *'
   workflow_dispatch: # Allows manual triggering from GitHub UI for testing
 
 jobs:
