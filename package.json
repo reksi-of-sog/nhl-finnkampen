@@ -1,23 +1,24 @@
 {
-"name": "nhl-fin-swe-bot",
-"version": "0.1.0",
-"type": "module",
-"scripts": {
-"dev": "tsx src/ingest.ts --date=$(date +%F)",
-"ingest": "tsx src/ingest.ts",
-"build": "tsc -p .",
-"lint": "eslint ."
-},
-"dependencies": {
-"dotenv": "^16.4.5",
-"pg": "^8.11.5",
-"undici": "^6.19.8",
-"zod": "^3.23.8"
-},
-"devDependencies": {
-"@types/node": "^22.5.4",
-"eslint": "^9.10.0",
-"tsx": "^4.19.2",
-"typescript": "^5.6.2"
-}
+  "name": "nhl-fin-swe-bot",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "ingest": "tsx src/ingest.ts",
+    "peek": "tsx scripts/peek.ts",
+    "test:db": "tsx scripts/test-db.ts",
+    "post:nightly": "tsx scripts/post-nightly.ts",
+    "run:nightly": "node -e \"const d=new Date(Date.now()-86400000).toISOString().slice(0,10);console.log(d)\" | xargs -I {} sh -c \"npm run ingest -- --date {} && npm run post:nightly -- --date {}\"",
+    "run:nightly:win": "for /f \"usebackq delims=\" %d in (`node -e \"d=new Date(Date.now()-86400000).toISOString().slice(0,10);console.log(d)\"`) do (npm run ingest -- --date %d && npm run post:nightly -- --date %d)"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "pg": "^8.12.0",
+    "twitter-api-v2": "^1.17.2"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3"
+  }
 }
