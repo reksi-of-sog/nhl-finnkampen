@@ -63,6 +63,7 @@ async function main() {
       [date]
     );
     const gameType = gameTypeRes.rows[0]?.game_type || null;
+    console.log(`[post] Determined gameType for ${date}: ${gameType}`); // ADDED: Log gameType
 
     // Fetch season aggregates
     const seasonRes = await pool.query(
