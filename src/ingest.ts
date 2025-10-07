@@ -272,14 +272,14 @@ async function updateSeasonWins(client: any, date: string) {
   const season = seasonFromDate(date);
 
   // Get all distinct game_types for the current season up to the current date.
-  const distinctGameTypesRes = await client.query( // Use client from transaction
+  const distinctGameTypesRes = await client.query(
     `SELECT DISTINCT game_type FROM nhl.games WHERE season = $1 AND game_date <= $2`,
     [season, date]
   );
   const distinctGameTypes = distinctGameTypesRes.rows.map(row => row.game_type);
 
   for (const gt of distinctGameTypes) {
-    const seasonNightlyWinnersRes = await client.query( // Use client from transaction
+    const seasonNightlyWinnersRes = await client.query(
       `SELECT night_winner FROM nhl.nightly_nation_agg
        WHERE game_date <= $1 AND night_winner IS NOT NULL
        AND EXISTS (SELECT 1 FROM nhl.games WHERE nhl.games.game_date = nhl.nightly_nation_agg.game_date AND nhl.games.game_type = $2 AND nhl.games.season = $3)`,
@@ -297,13 +297,22 @@ async function updateSeasonWins(client: any, date: string) {
       }
     }
 
-    // Update both FIN and SWE rows in season_nation_agg with the calculated wins
-    await client.query( // Use client from transaction
+    // Update FIN's season_nation_agg row
+    await client.query(
       `UPDATE nhl.season_nation_agg
-       SET fin_night_wins = $1, swe_night_wins = $2
-       WHERE season = $3 AND game_type = $4 AND nation IN ('FIN', 'SWE')`,
-      [finSeasonWins, sweSeasonWins, season, gt]
+       SET fin_night_wins = $1
+       WHERE season = $2 AND game_type = $3 AND nation = 'FIN'`,
+      [finSeasonWins, season, gt]
     );
+
+    // Update SWE's season_nation_agg row
+    await client.query(
+      `UPDATE nhl.season_nation_agg
+       SET swe_night_wins = $1
+       WHERE season = $2 AND game_type = $3 AND nation = 'SWE'`,
+      [sweSeasonWins, season, gt]
+    );
+
     console.log(`[ingest] Season wins for ${season} (${gt}): FIN ${finSeasonWins}, SWE ${sweSeasonWins}`);
   }
 }
