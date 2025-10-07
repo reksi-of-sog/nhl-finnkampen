@@ -221,8 +221,8 @@ async function computeSeasonAgg(client: any, date: string) {
     on conflict (season, nation, game_type) do update set
       goals = excluded.goals,
       assists = excluded.assists,
-      fin_night_wins = 0, -- Reset season wins, will be set in updateSeasonWins
-      swe_night_wins = 0, -- Reset season wins, will be set in updateSeasonWins
+      -- REMOVED: fin_night_wins = 0,
+      -- REMOVED: swe_night_wins = 0,
       updated_at = now()
   `;
   await client.query(q, [season]);
