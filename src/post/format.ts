@@ -48,8 +48,8 @@ export function formatNightlyTweet(n: NightlyRow, s: SeasonRow | null, gameType:
   const body = `${finLine}\n${sweLine}${nightlyWinnerLine}`;
 
   const seasonHeader = gameType === 'PR'
-    ? `Harjoituskausi - Försäsongen (${s?.season}):`
-    : `Kausitilastot - Säsongen totalt (${s?.season}):`;
+    ? `Pre-season (${s?.season}):`
+    : `Season total (${s?.season}):`;
 
   let seasonPart = '';
   if (s) {
