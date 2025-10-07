@@ -9,7 +9,7 @@ if (!url) {
 }
 
 // --- Load the CA bundle you downloaded from Supabase → Database → SSL Configuration ---
-const ca = readFileSync('./ca-certificate.crt').toString(); // Assuming ca-certificate.crt is in the root
+const ca = readFileSync('./prod-ca-2021.crt').toString(); // Assuming ca-certificate.crt is in the root
 
 export const pool = new Pool({
   connectionString: url.replace(/\?sslmode=require$/i, ''),
