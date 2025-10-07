@@ -4,13 +4,11 @@ import {
   fetchScheduleIdsForDate,
   fetchBoxscore,
   fetchPlayerLanding,
-} from './lib/nhl-api.js';
-import {
   teamMetaFromBox,
   extractPlayerRowsFromBoxscore,
   tallyFromBoxscoreSummary,
   birthCountryFromLanding,
-} from './lib/nhl-data.js';
+} from './lib/nhl.js'; // Corrected import path
 
 function arg(name: string, def: string): string {
   const i = process.argv.indexOf(name);
@@ -25,8 +23,8 @@ function seasonFromDate(d: string) {
 }
 
 async function main() {
-  const date = arg('--date', new Date().toISOString().slice(0, 10));
-  const games = await fetchScheduleIdsForDate(date);
+  const date = arg('--date', new Date().toISOString().slice(0, 10)); // This is the date we want to process
+  const games = await fetchScheduleIdsForDate(date); // Fetch schedule for THIS date
   console.log(`[ingest] ${games.length} game(s) on ${date}`);
 
   const natCache = new Map<number, string | null>();
@@ -39,12 +37,12 @@ async function main() {
 
       const box = await fetchBoxscore(gamePk);
       const meta = teamMetaFromBox(box);
-      const season = seasonFromDate(meta.gameDate || date);
+      const season = seasonFromDate(date); // Season should be based on the ingest date
       const homeId = await upsertTeamReturnId(tx, meta.home.nhl_id, meta.home.name, meta.home.abbr);
       const awayId = await upsertTeamReturnId(tx, meta.away.nhl_id, meta.away.name, meta.away.abbr);
       const gameId = await upsertGameReturnId(tx, {
         nhl_game_pk: gamePk,
-        game_date: meta.gameDate || date,
+        game_date: date, // MODIFIED: Use the ingest date here for consistency
         season,
         game_type: gameType,
         home_team_id: homeId,
@@ -95,12 +93,12 @@ async function main() {
     }
 
     // 3) Aggregates for the date + season (FIN/SWE)
-    await computeNightlyAgg(tx, date); // This will now also store player_count
+    await computeNightlyAgg(tx, date); // Pass the ingest date
     await computeSeasonAgg(tx, date);
 
     // Calculate and update Nightly Winner and Season Wins
-    await updateNightlyWinner(tx, date);
-    await updateSeasonWins(tx, date);
+    await updateNightlyWinner(tx, date); // Pass the ingest date
+    await updateSeasonWins(tx, date); // Pass the ingest date
   });
 
   console.log(`[ingest] Done for ${date} (session wrote ${sessionWrote})`);
@@ -160,17 +158,17 @@ async function upsertGameReturnId(tx: any, game: {
   return res.rows[0].id;
 }
 
-async function upsertPlayerReturnId(tx: any, nhl_id: number, name: string, birth_country: string) {
+async function upsertPlayerReturnId(tx: any, nhl_id: number, playerName: string, birth_country: string) {
   const q = `
-    INSERT INTO nhl.players (nhl_id, name, birth_country)
+    INSERT INTO nhl.players (nhl_id, full_name, birth_country)
     VALUES ($1, $2, $3)
     ON CONFLICT (nhl_id) DO UPDATE SET
-      name = excluded.name,
+      full_name = excluded.full_name,
       birth_country = excluded.birth_country,
       updated_at = NOW()
     RETURNING id;
   `;
-  const res = await tx.query(q, [nhl_id, name, birth_country]);
+  const res = await tx.query(q, [nhl_id, playerName, birth_country]);
   return res.rows[0].id;
 }
 
@@ -193,10 +191,10 @@ async function upsertPlayerGameStats(tx: any, stats: {
   await tx.query(q, [stats.game_id, stats.player_id, nz(stats.goals), nz(stats.assists), stats.decision || null]);
 }
 
-async function computeNightlyAgg(client: any, date: string) {
+async function computeNightlyAgg(client: any, date: string) { // 'date' here is the ingest date
   const dataToUpsertRes = await client.query(
     `SELECT
-      g.game_date,
+      $1::DATE AS game_date, -- MODIFIED: Use the passed 'date' argument for game_date
       p.birth_country AS nation,
       COALESCE(SUM(s.goals), 0) AS goals,
       COALESCE(SUM(s.assists), 0) AS assists,
@@ -205,21 +203,20 @@ async function computeNightlyAgg(client: any, date: string) {
     FROM nhl.player_game_stats s
     JOIN nhl.games g ON s.game_id = g.id
     JOIN nhl.players p ON s.player_id = p.id
-    WHERE g.game_date = $1 AND p.birth_country IN ('FIN', 'SWE')
-    GROUP BY g.game_date, p.birth_country;`,
-    [date]
+    WHERE g.game_date = $1 AND p.birth_country IN ('FIN', 'SWE') -- Filter games by the ingest date
+    GROUP BY p.birth_country;`, // Group only by nation, as game_date is fixed to $1
+    [date] // Pass the ingest date as $1
   );
 
   console.log(`[ingest:debug] Data calculated for nightly_nation_agg for ${date}:`, dataToUpsertRes.rows);
 
-  // Ensure rows exist for FIN/SWE even if no players/points, so updateNightlyWinner can process them
   const nationsPresent = new Set(dataToUpsertRes.rows.map(row => row.nation));
   const nationsToEnsure = ['FIN', 'SWE'];
 
   for (const nation of nationsToEnsure) {
     if (!nationsPresent.has(nation)) {
       dataToUpsertRes.rows.push({
-        game_date: date,
+        game_date: date, // Use the consistent ingest date
         nation: nation,
         goals: 0,
         assists: 0,
@@ -335,18 +332,31 @@ async function updateSeasonWins(client: any, date: string) {
   const season = seasonFromDate(date);
 
   const distinctGameTypesRes = await client.query(
-    `SELECT DISTINCT game_type FROM nhl.games WHERE season = $1 AND game_date <= $2`,
+    `SELECT DISTINCT game_type FROM nhl.games WHERE season = $1 AND game_date::DATE <= $2::DATE`,
     [season, date]
   );
   const distinctGameTypes = distinctGameTypesRes.rows.map(row => row.game_type);
+  console.log(`[ingest:debug] Distinct game types for season ${season} up to ${date}:`, distinctGameTypes);
+
 
   for (const gt of distinctGameTypes) {
+    // MODIFIED: Select DISTINCT game_date and night_winner to avoid double-counting
     const seasonNightlyWinnersRes = await client.query(
-      `SELECT night_winner FROM nhl.nightly_nation_agg
-       WHERE game_date <= $1 AND night_winner IS NOT NULL
-       AND EXISTS (SELECT 1 FROM nhl.games WHERE nhl.games.game_date = nhl.nightly_nation_agg.game_date AND nhl.games.game_type = $2 AND nhl.games.season = $3)`,
+      `SELECT DISTINCT nna.game_date, nna.night_winner
+       FROM nhl.nightly_nation_agg nna
+       WHERE nna.game_date::DATE <= $1::DATE
+         AND nna.night_winner IS NOT NULL
+         AND EXISTS (
+           SELECT 1
+           FROM nhl.games g
+           WHERE g.game_date::DATE = nna.game_date::DATE
+             AND g.game_type = $2
+             AND g.season = $3
+         )`,
       [date, gt, season]
     );
+
+    console.log(`[ingest:debug] Nightly winners for season ${season}, game type ${gt} up to ${date}:`, seasonNightlyWinnersRes.rows);
 
     let finSeasonWins = 0;
     let sweSeasonWins = 0;
@@ -367,7 +377,7 @@ async function updateSeasonWins(client: any, date: string) {
     );
 
     await client.query(
-      `UPDATE nhl.season_agg
+      `UPDATE nhl.season_nation_agg
        SET swe_night_wins = $1
        WHERE season = $2 AND game_type = $3 AND nation = 'SWE'`,
       [sweSeasonWins, season, gt]
