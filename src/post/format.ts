@@ -41,22 +41,22 @@ export function formatNightlyTweet(n: NightlyRow, s: SeasonRow | null, gameType:
   } else if (n.night_winner === 'SWE') {
     nightlyWinnerLine = `\n${flag('SWE')} voitti illan/vann kvällen!`; // SWE won the night!
   } else if (n.night_winner === 'TIE') {
-    nightlyWinnerLine = `\nDeuce!.`; // Tie in nightly points.
+    nightlyWinnerLine = `\nTasuri/Dra!.`; // Tie in nightly points.
   }
 
   const header = `NHL i går kväll / viime yö:  ${date}`;
   const body = `${finLine}\n${sweLine}${nightlyWinnerLine}`;
 
   const seasonHeader = gameType === 'PR'
-    ? `Pre-season (${s?.season}):`
-    : `Season total (${s?.season}):`;
+    ? `Pre-season:`
+    : `Season total:`;
 
   let seasonPart = '';
   if (s) {
     // Calculate season points
     const finSeasonPoints = s.fin_goals + s.fin_assists;
     const sweSeasonPoints = s.swe_goals + s.swe_assists;
-    seasonPart = `\n\n${seasonHeader}\n${flag('FIN')} ${s.fin_goals} G, ${s.fin_assists} A, ${finSeasonPoints} P (${s.fin_night_wins} voittoa)\n${flag('SWE')} ${s.swe_goals} G, ${s.swe_assists} A, ${sweSeasonPoints} P (${s.swe_night_wins} voittoa)`;
+    seasonPart = `\n\n${seasonHeader}\n${flag('FIN')} ${s.fin_goals} G, ${s.fin_assists} A, ${finSeasonPoints} P (${s.fin_night_wins} wins)\n${flag('SWE')} ${s.swe_goals} G, ${s.swe_assists} A, ${sweSeasonPoints} P (${s.swe_night_wins} wins)`;
   }
 
   const tags = `\n\n#nhlfi #nhlsv #Finnkampen #jääkiekko #ishockey #leijonat #trekronor`;
