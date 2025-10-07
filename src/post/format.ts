@@ -3,6 +3,7 @@ export type NightlyRow = {
   game_date: string;
   fin_goals: number; fin_assists: number;
   swe_goals: number; swe_assists: number;
+  night_winner: 'FIN' | 'SWE' | 'TIE' | null; // Added for night wins
 };
 
 export type SeasonRow = {
@@ -10,6 +11,8 @@ export type SeasonRow = {
   game_type: string;
   fin_goals: number; fin_assists: number;
   swe_goals: number; swe_assists: number;
+  fin_night_wins: number; // Added for season night wins
+  swe_night_wins: number; // Added for season night wins
 };
 
 function flag(nation: 'FIN'|'SWE') {
@@ -32,8 +35,17 @@ export function formatNightlyTweet(n: NightlyRow, s: SeasonRow | null, gameType:
   const finLine = `${flag('FIN')} FIN  ${a(n.fin_goals)} G, ${a(n.fin_assists)} A, ${a(finNightlyPoints)} P`;
   const sweLine = `${flag('SWE')} SWE ${a(n.swe_goals)} G, ${a(n.swe_assists)} A, ${a(sweNightlyPoints)} P`;
 
+  let nightlyWinnerLine = '';
+  if (n.night_winner === 'FIN') {
+    nightlyWinnerLine = `\n${flag('FIN')} voitti illan/vann kvällen!`; // FIN won the night!
+  } else if (n.night_winner === 'SWE') {
+    nightlyWinnerLine = `\n${flag('SWE')} voitti illan/vann kvällen!`; // SWE won the night!
+  } else if (n.night_winner === 'TIE') {
+    nightlyWinnerLine = `\nDeuce!.`; // Tie in nightly points.
+  }
+
   const header = `NHL i går kväll / viime yö:  ${date}`;
-  const body = `${finLine}\n${sweLine}`;
+  const body = `${finLine}\n${sweLine}${nightlyWinnerLine}`;
 
   const seasonHeader = gameType === 'PR'
     ? `Harjoituskausi - Försäsongen (${s?.season}):`
@@ -44,7 +56,7 @@ export function formatNightlyTweet(n: NightlyRow, s: SeasonRow | null, gameType:
     // Calculate season points
     const finSeasonPoints = s.fin_goals + s.fin_assists;
     const sweSeasonPoints = s.swe_goals + s.swe_assists;
-    seasonPart = `\n\n${seasonHeader}\n${flag('FIN')} ${s.fin_goals} G, ${s.fin_assists} A, ${finSeasonPoints} P\n${flag('SWE')} ${s.swe_goals} G, ${s.swe_assists} A, ${sweSeasonPoints} P`;
+    seasonPart = `\n\n${seasonHeader}\n${flag('FIN')} ${s.fin_goals} G, ${s.fin_assists} A, ${finSeasonPoints} P (${s.fin_night_wins} voittoa)\n${flag('SWE')} ${s.swe_goals} G, ${s.swe_assists} A, ${sweSeasonPoints} P (${s.swe_night_wins} voittoa)`;
   }
 
   const tags = `\n\n#nhlfi #nhlsv #Finnkampen #jääkiekko #ishockey #leijonat #trekronor`;

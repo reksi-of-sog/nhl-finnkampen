@@ -1,6 +1,6 @@
 // src/ingest.ts
 import 'dotenv/config';
-import { withTx } from './lib/db.js';
+import { withTx, pool } from './lib/db.js'; // Ensure 'pool' is imported for direct queries outside transaction
 import {
   fetchScheduleIdsForDate,
   fetchBoxscore,
@@ -100,6 +100,10 @@ async function main() {
     // 3) Aggregates for the date + season (FIN/SWE)
     await computeNightlyAgg(tx, date);
     await computeSeasonAgg(tx, date);
+
+    // --- NEW: Calculate and update Nightly Winner and Season Wins ---
+    await updateNightlyWinner(tx, date);
+    await updateSeasonWins(tx, date);
   });
 
   console.log(`[ingest] Done for ${date} (session wrote ${sessionWrote})`);
@@ -193,6 +197,7 @@ async function computeNightlyAgg(client: any, date: string) {
       goals = excluded.goals,
       assists = excluded.assists,
       goalie_wins = excluded.goalie_wins,
+      night_winner = NULL, -- Reset night_winner, will be set in updateNightlyWinner
       updated_at = now()
   `;
   await client.query(q, [date]);
@@ -216,9 +221,91 @@ async function computeSeasonAgg(client: any, date: string) {
     on conflict (season, nation, game_type) do update set
       goals = excluded.goals,
       assists = excluded.assists,
+      fin_night_wins = 0, -- Reset season wins, will be set in updateSeasonWins
+      swe_night_wins = 0, -- Reset season wins, will be set in updateSeasonWins
       updated_at = now()
   `;
   await client.query(q, [season]);
+}
+
+// --- NEW FUNCTIONS FOR NIGHT WINS AND SEASON WINS ---
+
+async function updateNightlyWinner(client: any, date: string) {
+  const nightlyAggsRes = await client.query( // Use client from transaction
+    `SELECT nation, goals, assists FROM nhl.nightly_nation_agg WHERE game_date = $1`,
+    [date]
+  );
+
+  let finNightlyPoints = 0;
+  let sweNightlyPoints = 0;
+
+  for (const row of nightlyAggsRes.rows) {
+    const totalPoints = row.goals + row.assists;
+    if (row.nation === 'FIN') {
+      finNightlyPoints = totalPoints;
+    } else if (row.nation === 'SWE') {
+      sweNightlyPoints = totalPoints;
+    }
+  }
+
+  let nightWinner: 'FIN' | 'SWE' | 'TIE' | null = null;
+  if (finNightlyPoints > sweNightlyPoints) {
+    nightWinner = 'FIN';
+  } else if (sweNightlyPoints > finNightlyPoints) {
+    nightWinner = 'SWE';
+  } else if (finNightlyPoints > 0 || sweNightlyPoints > 0) { // Only a tie if at least one point was scored
+    nightWinner = 'TIE';
+  }
+
+  if (nightWinner) {
+    await client.query( // Use client from transaction
+      `UPDATE nhl.nightly_nation_agg SET night_winner = $1 WHERE game_date = $2`,
+      [nightWinner, date]
+    );
+    console.log(`[ingest] Nightly winner for ${date}: ${nightWinner}`);
+  } else {
+    console.log(`[ingest] No points scored for FIN/SWE on ${date}, no nightly winner.`);
+  }
+}
+
+async function updateSeasonWins(client: any, date: string) {
+  const season = seasonFromDate(date);
+
+  // Get all distinct game_types for the current season up to the current date.
+  const distinctGameTypesRes = await client.query( // Use client from transaction
+    `SELECT DISTINCT game_type FROM nhl.games WHERE season = $1 AND game_date <= $2`,
+    [season, date]
+  );
+  const distinctGameTypes = distinctGameTypesRes.rows.map(row => row.game_type);
+
+  for (const gt of distinctGameTypes) {
+    const seasonNightlyWinnersRes = await client.query( // Use client from transaction
+      `SELECT night_winner FROM nhl.nightly_nation_agg
+       WHERE game_date <= $1 AND night_winner IS NOT NULL
+       AND EXISTS (SELECT 1 FROM nhl.games WHERE nhl.games.game_date = nhl.nightly_nation_agg.game_date AND nhl.games.game_type = $2 AND nhl.games.season = $3)`,
+      [date, gt, season]
+    );
+
+    let finSeasonWins = 0;
+    let sweSeasonWins = 0;
+
+    for (const row of seasonNightlyWinnersRes.rows) {
+      if (row.night_winner === 'FIN') {
+        finSeasonWins++;
+      } else if (row.night_winner === 'SWE') {
+        sweSeasonWins++;
+      }
+    }
+
+    // Update both FIN and SWE rows in season_nation_agg with the calculated wins
+    await client.query( // Use client from transaction
+      `UPDATE nhl.season_nation_agg
+       SET fin_night_wins = $1, swe_night_wins = $2
+       WHERE season = $3 AND game_type = $4 AND nation IN ('FIN', 'SWE')`,
+      [finSeasonWins, sweSeasonWins, season, gt]
+    );
+    console.log(`[ingest] Season wins for ${season} (${gt}): FIN ${finSeasonWins}, SWE ${sweSeasonWins}`);
+  }
 }
 
 main().catch((e) => {
