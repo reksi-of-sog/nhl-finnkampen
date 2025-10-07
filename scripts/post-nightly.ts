@@ -24,7 +24,9 @@ function flattenNightly(rows: any[]): NightlyRow {
     fin_assists: fin.assists || 0,
     swe_goals: swe.goals || 0,
     swe_assists: swe.assists || 0,
-    night_winner: rows[0]?.night_winner || null, // Ensure night_winner is included
+    night_winner: rows[0]?.night_winner || null,
+    fin_player_count: fin.player_count || 0,
+    swe_player_count: swe.player_count || 0,
   };
 }
 
@@ -39,8 +41,8 @@ function flattenSeason(rows: any[]): SeasonRow {
     fin_assists: fin.assists || 0,
     swe_goals: swe.goals || 0,
     swe_assists: swe.assists || 0,
-    fin_night_wins: fin.fin_night_wins || 0, // ADDED: Ensure fin_night_wins is included
-    swe_night_wins: swe.swe_night_wins || 0, // ADDED: Ensure swe_night_wins is included
+    fin_night_wins: fin.fin_night_wins || 0,
+    swe_night_wins: swe.swe_night_wins || 0,
   };
 }
 
@@ -52,7 +54,7 @@ async function main() {
   try {
     // Fetch nightly aggregates
     const nightlyRes = await pool.query(
-      `SELECT game_date, nation, goals, assists, night_winner FROM nhl.nightly_nation_agg WHERE game_date = $1`,
+      `SELECT game_date, nation, goals, assists, night_winner, player_count FROM nhl.nightly_nation_agg WHERE game_date = $1`,
       [date]
     );
     const nightlyAgg = flattenNightly(nightlyRes.rows);
@@ -63,7 +65,7 @@ async function main() {
       [date]
     );
     const gameType = gameTypeRes.rows[0]?.game_type || null;
-    console.log(`[post] Determined gameType for ${date}: ${gameType}`); // ADDED: Log gameType
+    console.log(`[post] Determined gameType for ${date}: ${gameType}`);
 
     // Fetch season aggregates
     const seasonRes = await pool.query(
@@ -98,4 +100,4 @@ async function main() {
   }
 }
 
-main(); // Call main directly, the finally block handles pool.end()
+main();

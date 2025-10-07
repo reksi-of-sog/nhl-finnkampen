@@ -231,40 +231,63 @@ async function computeSeasonAgg(client: any, date: string) {
 // --- NEW FUNCTIONS FOR NIGHT WINS AND SEASON WINS ---
 
 async function updateNightlyWinner(client: any, date: string) {
-  const nightlyAggsRes = await client.query( // Use client from transaction
-    `SELECT nation, goals, assists FROM nhl.nightly_nation_agg WHERE game_date = $1`,
+  const nightlyAggsRes = await client.query(
+    `SELECT nation, goals, assists, player_count FROM nhl.nightly_nation_agg WHERE game_date = $1`,
     [date]
   );
 
   let finNightlyPoints = 0;
   let sweNightlyPoints = 0;
+  let finPlayerCount = 0;
+  let swePlayerCount = 0;
 
   for (const row of nightlyAggsRes.rows) {
     const totalPoints = row.goals + row.assists;
     if (row.nation === 'FIN') {
       finNightlyPoints = totalPoints;
+      finPlayerCount = row.player_count;
     } else if (row.nation === 'SWE') {
       sweNightlyPoints = totalPoints;
+      swePlayerCount = row.player_count;
     }
   }
 
+  let finScaledScore = 0;
+  let sweScaledScore = 0;
   let nightWinner: 'FIN' | 'SWE' | 'TIE' | null = null;
-  if (finNightlyPoints > sweNightlyPoints) {
+
+  // Calculate scaled scores (points per player)
+  if (finPlayerCount > 0) {
+    finScaledScore = finNightlyPoints / finPlayerCount;
+  }
+  if (swePlayerCount > 0) {
+    sweScaledScore = sweNightlyPoints / swePlayerCount;
+  }
+
+  // Determine winner based on scaled scores
+  if (finScaledScore > sweScaledScore) {
     nightWinner = 'FIN';
-  } else if (sweNightlyPoints > finNightlyPoints) {
+  } else if (sweScaledScore > finScaledScore) {
     nightWinner = 'SWE';
-  } else if (finNightlyPoints > 0 || sweNightlyPoints > 0) { // Only a tie if at least one point was scored
+  } else if (finScaledScore === sweScaledScore && (finNightlyPoints > 0 || sweNightlyPoints > 0)) {
+    // Tie if scaled scores are equal AND at least one point was scored by either
     nightWinner = 'TIE';
+  } else if (finPlayerCount > 0 || swePlayerCount > 0) {
+    // If no points but players present for at least one, it's a tie (0 scaled score for both)
+    nightWinner = 'TIE';
+  } else {
+    // No players, no points for either nation
+    nightWinner = null;
   }
 
   if (nightWinner) {
-    await client.query( // Use client from transaction
+    await client.query(
       `UPDATE nhl.nightly_nation_agg SET night_winner = $1 WHERE game_date = $2`,
       [nightWinner, date]
     );
-    console.log(`[ingest] Nightly winner for ${date}: ${nightWinner}`);
+    console.log(`[ingest] Nightly winner for ${date}: ${nightWinner} (FIN G+A: ${finNightlyPoints}, Players: ${finPlayerCount}, Scaled: ${finScaledScore.toFixed(2)} | SWE G+A: ${sweNightlyPoints}, Players: ${swePlayerCount}, Scaled: ${sweScaledScore.toFixed(2)})`);
   } else {
-    console.log(`[ingest] No points scored for FIN/SWE on ${date}, no nightly winner.`);
+    console.log(`[ingest] No FIN or SWE players/points on ${date}, no nightly winner.`);
   }
 }
 
