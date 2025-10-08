@@ -115,8 +115,15 @@ async function main() {
   tweet += `🇫🇮 FIN  ${finNightlyGoals} G, ${finNightlyAssists} A, ${finNightlyPoints} P\n`;
   tweet += `🇸🇪 SWE ${sweNightlyGoals} G, ${sweNightlyAssists} A, ${sweNightlyPoints} P\n`;
 
+  // Reintroduce the nightly winner section
+  if (nightlyWinner) {
+    tweet += `${nightlyWinner === 'FIN' ? '🇫🇮' : '🇸🇪'} voitti illan/vann kvällen!\n\n`;
+  } else {
+    tweet += `Ingen vinnare / Ei voittajaa (inga spelare / ei pelaajia)\n\n`;
+  }
+
   // Append a unique timestamp to the tweet content for debugging duplicate issues
-  tweet += `\n\n(Debug ID: ${new Date().toISOString()})`;
+  tweet += `(Debug ID: ${new Date().toISOString()})`;
   // --- END REINTRODUCING TWEET CONTENT ---
 
 
