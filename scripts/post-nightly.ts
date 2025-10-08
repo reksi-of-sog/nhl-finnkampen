@@ -110,7 +110,7 @@ async function main() {
     }
   }
 
-  // --- REINTRODUCING TWEET CONTENT GRADUALLY ---
+  // --- TWEET CONTENT ---
   let tweet = `NHL i går kväll / viime yö:  ${date}\n\n`;
   tweet += `🇫🇮 FIN  ${finNightlyGoals} G, ${finNightlyAssists} A, ${finNightlyPoints} P\n`;
   tweet += `🇸🇪 SWE ${sweNightlyGoals} G, ${sweNightlyAssists} A, ${sweNightlyPoints} P\n`;
@@ -132,12 +132,17 @@ async function main() {
   tweet += `🇫🇮 ${finSeasonGoals} G, ${finSeasonAssists} A, ${finSeasonPoints} P (${finSeasonWins} voittoa)\n`;
   tweet += `🇸🇪 ${sweSeasonGoals} G, ${sweSeasonAssists} A, ${sweSeasonPoints} P (${sweSeasonWins} voittoa)\n\n`;
 
-  // NO HASHTAGS FOR DEBUGGING
-  tweet += `#random #politiikka #stockholm #muumaa #mustikka`;
+  // Determine which hashtag to use based on the day of the month
+  const dayOfMonth = new Date(date).getDate();
+  if (dayOfMonth % 2 === 0) { // Even day
+    tweet += `#nhlfi`;
+  } else { // Odd day
+    tweet += `#nhlse`;
+  }
 
   // Append a unique timestamp to the tweet content for debugging duplicate issues
-  tweet += `(Debug ID: ${new Date().toISOString()})`;
-  // --- END REINTRODUCING TWEET CONTENT ---
+  tweet += `\n\n(Debug ID: ${new Date().toISOString()})`;
+  // --- END TWEET CONTENT ---
 
 
   if (process.env.TWITTER_ENABLE === '1') {
