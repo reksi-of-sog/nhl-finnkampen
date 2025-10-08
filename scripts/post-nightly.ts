@@ -129,8 +129,8 @@ async function main() {
 
   const seasonLabel = gameType === 'PR' ? 'Pre-season' : 'Regular Season';
   tweet += `${seasonLabel}:\n`;
-  tweet += `🇫🇮 ${finSeasonGoals} G, ${finSeasonAssists} A, ${finSeasonPoints} P (${finSeasonWins} voittoa)\n`;
-  tweet += `🇸🇪 ${sweSeasonGoals} G, ${sweSeasonAssists} A, ${sweSeasonPoints} P (${sweSeasonWins} voittoa)\n\n`;
+  tweet += `🇫🇮 ${finSeasonGoals} G, ${finSeasonAssists} A, ${finSeasonPoints} Pts (${finSeasonWins} wins)\n`;
+  tweet += `🇸🇪 ${sweSeasonGoals} G, ${sweSeasonAssists} A, ${sweSeasonPoints} Pts (${sweSeasonWins} wins)\n\n`;
 
   // Determine which hashtag to use based on the day of the month
   const dayOfMonth = new Date(date).getDate();
