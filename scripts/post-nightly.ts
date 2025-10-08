@@ -127,14 +127,16 @@ async function main() {
     tweet += `(Per player: 🇫🇮 ${finPlayerCount}p, ${finScaled} | 🇸🇪 ${swePlayerCount}p, ${sweScaled})\n\n`;
   }
 
-  // Reintroduce the "Season" stats section
   const seasonLabel = gameType === 'PR' ? 'Pre-season' : 'Regular Season';
   tweet += `${seasonLabel}:\n`;
   tweet += `🇫🇮 ${finSeasonGoals} G, ${finSeasonAssists} A, ${finSeasonPoints} P (${finSeasonWins} voittoa)\n`;
   tweet += `🇸🇪 ${sweSeasonGoals} G, ${sweSeasonAssists} A, ${sweSeasonPoints} P (${sweSeasonWins} voittoa)\n\n`;
 
+  // Reintroduce the hashtags
+  tweet += `#nhlfi #nhlsv #Finnkampen #jääkiekko #ishockey #leijonat #trekronor`;
+
   // Append a unique timestamp to the tweet content for debugging duplicate issues
-  tweet += `(Debug ID: ${new Date().toISOString()})`;
+  tweet += `\n\n(Debug ID: ${new Date().toISOString()})`;
   // --- END REINTRODUCING TWEET CONTENT ---
 
 
