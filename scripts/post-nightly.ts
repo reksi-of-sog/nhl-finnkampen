@@ -133,7 +133,7 @@ async function main() {
   tweet += `🇸🇪 ${sweSeasonGoals} G, ${sweSeasonAssists} A, ${sweSeasonPoints} P (${sweSeasonWins} voittoa)\n\n`;
 
   // REDUCED HASHTAGS FOR DEBUGGING
-  tweet += `#nhlfi`; // Only two hashtags
+  tweet += `#nhlsv`; // Only two hashtags
 
   // Append a unique timestamp to the tweet content for debugging duplicate issues
   tweet += `\n\n(Debug ID: ${new Date().toISOString()})`;
