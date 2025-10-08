@@ -1,7 +1,12 @@
 name: Run Nightly Post
 
 on:
-  workflow_dispatch: # Allows manual triggering from GitHub Actions tab
+  workflow_dispatch:
+    inputs:
+      date:
+        description: 'Date to process (YYYY-MM-DD, e.g., 2025-10-07). Defaults to yesterday if not provided.'
+        required: false
+        type: string
   # schedule:
   #   - cron: '0 6 * * *' # Example: Run every day at 06:00 UTC (adjust as needed)
 
@@ -21,13 +26,27 @@ jobs:
     - name: Install dependencies
       run: npm install
 
-    - name: Debug Environment Variables # ADDED STEP
+    - name: Set processing date # MODIFIED: New step to handle date calculation
+      id: set_date
+      run: |
+        if [ -n "${{ github.event.inputs.date }}" ]; then
+          echo "PROCESSING_DATE=${{ github.event.inputs.date }}" >> $GITHUB_ENV
+          echo "Using input date: ${{ github.event.inputs.date }}"
+        else
+          # Calculate yesterday's date if no input is provided
+          YESTERDAY=$(date -d "yesterday" +%Y-%m-%d)
+          echo "PROCESSING_DATE=$YESTERDAY" >> $GITHUB_ENV
+          echo "Using calculated yesterday's date: $YESTERDAY"
+        fi
+
+    - name: Debug Environment Variables
       run: |
         echo "TWITTER_APP_KEY: ${TWITTER_APP_KEY}"
         echo "TWITTER_APP_SECRET: ${TWITTER_APP_SECRET}"
         echo "TWITTER_ACCESS_TOKEN: ${TWITTER_ACCESS_TOKEN}"
         echo "TWITTER_ACCESS_SECRET: ${TWITTER_ACCESS_SECRET}"
         echo "TWITTER_ENABLE: ${TWITTER_ENABLE}"
+        echo "PROCESSING_DATE: ${PROCESSING_DATE}" # ADDED: Log the determined date
       env:
         TWITTER_APP_KEY: ${{ secrets.TWITTER_APP_KEY }}
         TWITTER_APP_SECRET: ${{ secrets.TWITTER_APP_SECRET }}
@@ -36,11 +55,10 @@ jobs:
         TWITTER_ENABLE: ${{ secrets.TWITTER_ENABLE }}
 
     - name: Run post:nightly script
-      run: npm run post:nightly -- --date ${{ github.event.inputs.date || formatdate(github.event.repository.pushed_at, 'YYYY-MM-DD') }}
+      run: npm run post:nightly -- --date ${{ env.PROCESSING_DATE }} # MODIFIED: Use the determined date
       env:
         TWITTER_APP_KEY: ${{ secrets.TWITTER_APP_KEY }}
         TWITTER_APP_SECRET: ${{ secrets.TWITTER_APP_SECRET }}
         TWITTER_ACCESS_TOKEN: ${{ secrets.TWITTER_ACCESS_TOKEN }}
         TWITTER_ACCESS_SECRET: ${{ secrets.TWITTER_ACCESS_SECRET }}
         TWITTER_ENABLE: ${{ secrets.TWITTER_ENABLE }}
-        # RUN_DATE: ${{ github.event.inputs.date || formatdate(github.event.repository.pushed_at, 'YYYY-MM-DD') }} # Removed, using direct date in run command
