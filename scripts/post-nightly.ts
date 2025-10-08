@@ -121,12 +121,17 @@ async function main() {
     tweet += `Ingen vinnare / Ei voittajaa (inga spelare / ei pelaajia)\n\n`;
   }
 
-  // Reintroduce the "Per player" section
   if (finPlayerCount > 0 || swePlayerCount > 0) {
     const finScaled = finPlayerCount > 0 ? (finNightlyPoints / finPlayerCount).toFixed(2) : '0.00';
     const sweScaled = swePlayerCount > 0 ? (sweNightlyPoints / swePlayerCount).toFixed(2) : '0.00';
     tweet += `(Per player: 🇫🇮 ${finPlayerCount}p, ${finScaled} | 🇸🇪 ${swePlayerCount}p, ${sweScaled})\n\n`;
   }
+
+  // Reintroduce the "Season" stats section
+  const seasonLabel = gameType === 'PR' ? 'Pre-season' : 'Regular Season';
+  tweet += `${seasonLabel}:\n`;
+  tweet += `🇫🇮 ${finSeasonGoals} G, ${finSeasonAssists} A, ${finSeasonPoints} P (${finSeasonWins} voittoa)\n`;
+  tweet += `🇸🇪 ${sweSeasonGoals} G, ${sweSeasonAssists} A, ${sweSeasonPoints} P (${sweSeasonWins} voittoa)\n\n`;
 
   // Append a unique timestamp to the tweet content for debugging duplicate issues
   tweet += `(Debug ID: ${new Date().toISOString()})`;
