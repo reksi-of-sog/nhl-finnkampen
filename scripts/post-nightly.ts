@@ -134,6 +134,9 @@ async function main() {
 
   tweet += `#nhlfi #nhlsv #Finnkampen #jääkiekko #ishockey #leijonat #trekronor`;
 
+  // ADDED: Append a unique timestamp to the tweet content for debugging duplicate issues
+  tweet += `\n\n(Debug ID: ${new Date().toISOString()})`;
+
   if (process.env.TWITTER_ENABLE === '1') {
     console.log(`[post] Sending tweet:\n${tweet}`);
     console.log('[post:debug] Attempting to initialize Twitter client...'); // ADDED LOG
