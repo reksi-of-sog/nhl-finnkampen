@@ -23,13 +23,13 @@ async function main() {
 
   for (const row of nightlyAggsRes.rows) {
     if (row.nation === 'FIN') {
-      finNightlyGoals = Number(row.goals); // MODIFIED: Convert to number
-      finNightlyAssists = Number(row.assists); // MODIFIED: Convert to number
-      finPlayerCount = Number(row.player_count); // MODIFIED: Convert to number
+      finNightlyGoals = Number(row.goals);
+      finNightlyAssists = Number(row.assists);
+      finPlayerCount = Number(row.player_count);
     } else if (row.nation === 'SWE') {
-      sweNightlyGoals = Number(row.goals); // MODIFIED: Convert to number
-      sweNightlyAssists = Number(row.assists); // MODIFIED: Convert to number
-      swePlayerCount = Number(row.player_count); // MODIFIED: Convert to number
+      sweNightlyGoals = Number(row.goals);
+      sweNightlyAssists = Number(row.assists);
+      swePlayerCount = Number(row.player_count);
     }
     if (row.night_winner) {
       nightlyWinner = row.night_winner;
@@ -39,7 +39,7 @@ async function main() {
   const finNightlyPoints = finNightlyGoals + finNightlyAssists;
   const sweNightlyPoints = sweNightlyGoals + sweNightlyAssists;
 
-  // 2. Determine gameType for the date (assuming all games on a date have the same type for simplicity here)
+  // 2. Determine gameType for the date
   const gameTypeRes = await pool.query(
     `SELECT DISTINCT game_type FROM nhl.games WHERE game_date = $1 AND season = $2 LIMIT 1`,
     [date, season]
@@ -59,7 +59,7 @@ async function main() {
     JOIN nhl.players p ON s.player_id = p.id
     WHERE g.season = $1
       AND g.game_type = $2
-      AND g.game_date::DATE <= $3::DATE -- Filter up to the specified date
+      AND g.game_date::DATE <= $3::DATE
       AND p.birth_country IN ('FIN', 'SWE')
     GROUP BY p.birth_country;`,
     [season, gameType, date]
@@ -70,11 +70,11 @@ async function main() {
 
   for (const row of seasonGoalsAssistsRes.rows) {
     if (row.nation === 'FIN') {
-      finSeasonGoals = Number(row.goals); // MODIFIED: Convert to number
-      finSeasonAssists = Number(row.assists); // MODIFIED: Convert to number
+      finSeasonGoals = Number(row.goals);
+      finSeasonAssists = Number(row.assists);
     } else if (row.nation === 'SWE') {
-      sweSeasonGoals = Number(row.goals); // MODIFIED: Convert to number
-      sweSeasonAssists = Number(row.assists); // MODIFIED: Convert to number
+      sweSeasonGoals = Number(row.goals);
+      sweSeasonAssists = Number(row.assists);
     }
   }
 
@@ -85,7 +85,7 @@ async function main() {
   const seasonNightlyWinnersRes = await pool.query(
     `SELECT DISTINCT ON (nna.game_date) nna.night_winner
      FROM nhl.nightly_nation_agg nna
-     WHERE nna.game_date::DATE <= $1::DATE -- Filter up to the specified date
+     WHERE nna.game_date::DATE <= $1::DATE
        AND nna.night_winner IS NOT NULL
        AND EXISTS (
          SELECT 1
@@ -126,7 +126,9 @@ async function main() {
     tweet += `(Per player: 🇫🇮 ${finPlayerCount}p, ${finScaled} | 🇸🇪 ${swePlayerCount}p, ${sweScaled})\n\n`;
   }
 
-  tweet += `Pre-season:\n`;
+  // MODIFIED: Dynamic season label
+  const seasonLabel = gameType === 'PR' ? 'Pre-season' : 'Regular Season';
+  tweet += `${seasonLabel}:\n`;
   tweet += `🇫🇮 ${finSeasonGoals} G, ${finSeasonAssists} A, ${finSeasonPoints} P (${finSeasonWins} voittoa)\n`;
   tweet += `🇸🇪 ${sweSeasonGoals} G, ${sweSeasonAssists} A, ${sweSeasonPoints} P (${sweSeasonWins} voittoa)\n\n`;
 

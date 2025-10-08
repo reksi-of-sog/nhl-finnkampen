@@ -9,20 +9,22 @@ import {
   tallyFromBoxscoreSummary,
   birthCountryFromLanding,
 } from './lib/nhl.js';
-import { seasonFromDate } from './lib/util.js'; // MODIFIED: Import seasonFromDate from util.js
+import { seasonFromDate } from './lib/util.js';
 
 function arg(name: string, def: string): string {
   const i = process.argv.indexOf(name);
   return i >= 0 && process.argv[i + 1] ? process.argv[i + 1] : def;
 }
 
-// REMOVED: The seasonFromDate function is now in src/lib/util.ts
-// export function seasonFromDate(d: string) {
-//   const [y, m] = d.split('-').map(Number);
-//   const start = m >= 7 ? y : y - 1;
-//   const end = start + 1;
-//   return `${start}${end}`;
-// }
+// Helper to determine if a date is likely in the regular season
+// This is a heuristic to override potentially incorrect 'PR' gameType from API
+function isLikelyRegularSeasonStart(gameDate: string): boolean {
+  const [, month] = gameDate.split('-').map(Number);
+  // NHL regular season typically starts in early October.
+  // We'll consider any game in October (month 10) or later as potentially 'REG'
+  // if the API still reports 'PR'.
+  return month >= 10;
+}
 
 async function main() {
   const date = arg('--date', new Date().toISOString().slice(0, 10)); // This is the date we want to process
@@ -34,7 +36,14 @@ async function main() {
 
   await withTx(async (tx) => {
     for (let i = 0; i < games.length; i++) {
-      const { id: gamePk, gameType } = games[i];
+      let { id: gamePk, gameType } = games[i]; // Use 'let' to allow reassignment
+
+      // MODIFIED: Override gameType if it's 'PR' but the date suggests it should be 'REG'
+      if (gameType === 'PR' && isLikelyRegularSeasonStart(date)) {
+        console.log(`  [ingest:info] Overriding gameType from 'PR' to 'REG' for game ${gamePk} on ${date}`);
+        gameType = 'REG';
+      }
+
       console.log(`[ingest] Processing game ${i + 1}/${games.length} (id=${gamePk}, type=${gameType})`);
 
       const box = await fetchBoxscore(gamePk);
@@ -46,7 +55,7 @@ async function main() {
         nhl_game_pk: gamePk,
         game_date: date, // CRITICAL: Use the ingest date here for consistency
         season,
-        game_type: gameType,
+        game_type: gameType, // This will now be 'REG' if overridden
         home_team_id: homeId,
         away_team_id: awayId,
         status: box.gameState,
@@ -196,7 +205,7 @@ async function upsertPlayerGameStats(tx: any, stats: {
 async function computeNightlyAgg(client: any, date: string) { // 'date' here is the ingest date
   const dataToUpsertRes = await client.query(
     `SELECT
-      g.game_date AS game_date, -- MODIFIED: Select from games table directly
+      g.game_date AS game_date,
       p.birth_country AS nation,
       COALESCE(SUM(s.goals), 0) AS goals,
       COALESCE(SUM(s.assists), 0) AS assists,
@@ -205,9 +214,9 @@ async function computeNightlyAgg(client: any, date: string) { // 'date' here is 
     FROM nhl.player_game_stats s
     JOIN nhl.games g ON s.game_id = g.id
     JOIN nhl.players p ON s.player_id = p.id
-    WHERE g.game_date = $1 AND p.birth_country IN ('FIN', 'SWE') -- Filter games by the ingest date
-    GROUP BY g.game_date, p.birth_country;`, // MODIFIED: Group by g.game_date
-    [date] // Pass the ingest date as $1
+    WHERE g.game_date = $1 AND p.birth_country IN ('FIN', 'SWE')
+    GROUP BY g.game_date, p.birth_country;`,
+    [date]
   );
 
   console.log(`[ingest:debug] Data calculated for nightly_nation_agg for ${date}:`, dataToUpsertRes.rows);
@@ -218,7 +227,7 @@ async function computeNightlyAgg(client: any, date: string) { // 'date' here is 
   for (const nation of nationsToEnsure) {
     if (!nationsPresent.has(nation)) {
       dataToUpsertRes.rows.push({
-        game_date: date, // Use the consistent ingest date for missing nations
+        game_date: date,
         nation: nation,
         goals: 0,
         assists: 0,
@@ -281,13 +290,13 @@ async function updateNightlyWinner(client: any, date: string) {
   let swePlayerCount = 0;
 
   for (const row of nightlyAggsRes.rows) {
-    const totalPoints = row.goals + row.assists;
+    const totalPoints = Number(row.goals) + Number(row.assists); // Ensure numeric addition
     if (row.nation === 'FIN') {
       finNightlyPoints = totalPoints;
-      finPlayerCount = row.player_count;
+      finPlayerCount = Number(row.player_count); // Ensure numeric
     } else if (row.nation === 'SWE') {
       sweNightlyPoints = totalPoints;
-      swePlayerCount = row.player_count;
+      swePlayerCount = Number(row.player_count); // Ensure numeric
     }
   }
 
@@ -391,12 +400,11 @@ async function updateSeasonWins(client: any, date: string) {
 }
 
 main()
-  .then(async () => { // MODIFIED: Added async and await pool.end()
-    await pool.end(); // Explicitly end the pool on successful completion
+  .then(async () => {
+    await pool.end();
     process.exit(0);
   })
   .catch((e) => {
     console.error(e);
-    // pool.end(); // REMOVED: No need to call pool.end() here, process.exit will clean up
     process.exit(1);
   });
