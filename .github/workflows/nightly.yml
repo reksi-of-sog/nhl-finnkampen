@@ -1,38 +1,46 @@
-name: Nightly Ingest + Post
+name: Run Nightly Post
 
 on:
-  schedule:
-    - cron: "0 8 * * *"   # 06:30 UTC daily
-  workflow_dispatch: {}
+  workflow_dispatch: # Allows manual triggering from GitHub Actions tab
+  # schedule:
+  #   - cron: '0 6 * * *' # Example: Run every day at 06:00 UTC (adjust as needed)
 
 jobs:
-  run:
+  post:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
+    - name: Checkout code
+      uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: 'npm'
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20' # Or your preferred Node.js version
 
-      - run: npm ci
+    - name: Install dependencies
+      run: npm install
 
-      - name: Run ingest (yesterday UTC)
-        run: |
-          DATE=$(node -e "d=new Date(Date.now()-86400000).toISOString().slice(0,10);console.log(d)")
-          npm run ingest -- --date $DATE
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    - name: Debug Environment Variables # ADDED STEP
+      run: |
+        echo "TWITTER_APP_KEY: ${TWITTER_APP_KEY}"
+        echo "TWITTER_APP_SECRET: ${TWITTER_APP_SECRET}"
+        echo "TWITTER_ACCESS_TOKEN: ${TWITTER_ACCESS_TOKEN}"
+        echo "TWITTER_ACCESS_SECRET: ${TWITTER_ACCESS_SECRET}"
+        echo "TWITTER_ENABLE: ${TWITTER_ENABLE}"
+      env:
+        TWITTER_APP_KEY: ${{ secrets.TWITTER_APP_KEY }}
+        TWITTER_APP_SECRET: ${{ secrets.TWITTER_APP_SECRET }}
+        TWITTER_ACCESS_SECRET: ${{ secrets.TWITTER_ACCESS_SECRET }}
+        TWITTER_ACCESS_TOKEN: ${{ secrets.TWITTER_ACCESS_TOKEN }}
+        TWITTER_ENABLE: ${{ secrets.TWITTER_ENABLE }}
 
-      - name: Post nightly summary
-        run: |
-          DATE=$(node -e "d=new Date(Date.now()-86400000).toISOString().slice(0,10);console.log(d)")
-          npm run post:nightly -- --date $DATE
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          TWITTER_ENABLE: "1"
-          TWITTER_APP_KEY: ${{ secrets.TWITTER_APP_KEY }}
-          TWITTER_APP_SECRET: ${{ secrets.TWITTER_APP_SECRET }}
-          TWITTER_ACCESS_TOKEN: ${{ secrets.TWITTER_ACCESS_TOKEN }}
-          TWITTER_ACCESS_SECRET: ${{ secrets.TWITTER_ACCESS_SECRET }}
+    - name: Run post:nightly script
+      run: npm run post:nightly -- --date ${{ github.event.inputs.date || formatdate(github.event.repository.pushed_at, 'YYYY-MM-DD') }}
+      env:
+        TWITTER_APP_KEY: ${{ secrets.TWITTER_APP_KEY }}
+        TWITTER_APP_SECRET: ${{ secrets.TWITTER_APP_SECRET }}
+        TWITTER_ACCESS_TOKEN: ${{ secrets.TWITTER_ACCESS_TOKEN }}
+        TWITTER_ACCESS_SECRET: ${{ secrets.TWITTER_ACCESS_SECRET }}
+        TWITTER_ENABLE: ${{ secrets.TWITTER_ENABLE }}
+        # RUN_DATE: ${{ github.event.inputs.date || formatdate(github.event.repository.pushed_at, 'YYYY-MM-DD') }} # Removed, using direct date in run command

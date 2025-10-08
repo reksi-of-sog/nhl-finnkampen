@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import { pool } from '../src/lib/db.js';
 import { seasonFromDate } from '../src/lib/util.js';
+import { TwitterApi } from 'twitter-api-v2'; // Ensure this import is present
 
 function arg(name: string, def: string): string {
   const i = process.argv.indexOf(name);
@@ -126,7 +127,6 @@ async function main() {
     tweet += `(Per player: 🇫🇮 ${finPlayerCount}p, ${finScaled} | 🇸🇪 ${swePlayerCount}p, ${sweScaled})\n\n`;
   }
 
-  // MODIFIED: Dynamic season label
   const seasonLabel = gameType === 'PR' ? 'Pre-season' : 'Regular Season';
   tweet += `${seasonLabel}:\n`;
   tweet += `🇫🇮 ${finSeasonGoals} G, ${finSeasonAssists} A, ${finSeasonPoints} P (${finSeasonWins} voittoa)\n`;
@@ -135,8 +135,34 @@ async function main() {
   tweet += `#nhlfi #nhlsv #Finnkampen #jääkiekko #ishockey #leijonat #trekronor`;
 
   if (process.env.TWITTER_ENABLE === '1') {
-    // In a real scenario, you'd send the tweet here
     console.log(`[post] Sending tweet:\n${tweet}`);
+    console.log('[post:debug] Attempting to initialize Twitter client...'); // ADDED LOG
+    try {
+      // Ensure all environment variables are defined
+      if (!process.env.TWITTER_APP_KEY || !process.env.TWITTER_APP_SECRET || !process.env.TWITTER_ACCESS_TOKEN || !process.env.TWITTER_ACCESS_SECRET) {
+        console.error('[post:error] Missing one or more Twitter API credentials in environment variables.'); // ADDED LOG
+        return; // Exit early if credentials are missing
+      }
+
+      const client = new TwitterApi({
+        appKey: process.env.TWITTER_APP_KEY!,
+        appSecret: process.env.TWITTER_APP_SECRET!,
+        accessToken: process.env.TWITTER_ACCESS_TOKEN!,
+        accessSecret: process.env.TWITTER_ACCESS_SECRET!,
+      });
+      console.log('[post:debug] Twitter client initialized. Attempting to send tweet...'); // ADDED LOG
+
+      await client.v2.tweet(tweet);
+      console.log('[post] Tweet sent successfully!');
+    } catch (error) {
+      console.error('[post:error] Error sending tweet:', error); // MODIFIED LOG to be more explicit
+      if (error instanceof Error) { // ADDED: Log specific error properties if available
+        console.error('[post:error] Error name:', error.name);
+        console.error('[post:error] Error message:', error.message);
+        if ('code' in error) console.error('[post:error] Error code:', (error as any).code);
+        if ('data' in error) console.error('[post:error] Error data:', (error as any).data);
+      }
+    }
   } else {
     console.log(`[post] Skipped (TWITTER_ENABLE!=1):\n${tweet}`);
   }
