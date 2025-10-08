@@ -115,11 +115,17 @@ async function main() {
   tweet += `🇫🇮 FIN  ${finNightlyGoals} G, ${finNightlyAssists} A, ${finNightlyPoints} P\n`;
   tweet += `🇸🇪 SWE ${sweNightlyGoals} G, ${sweNightlyAssists} A, ${sweNightlyPoints} P\n`;
 
-  // Reintroduce the nightly winner section
   if (nightlyWinner) {
     tweet += `${nightlyWinner === 'FIN' ? '🇫🇮' : '🇸🇪'} voitti illan/vann kvällen!\n\n`;
   } else {
     tweet += `Ingen vinnare / Ei voittajaa (inga spelare / ei pelaajia)\n\n`;
+  }
+
+  // Reintroduce the "Per player" section
+  if (finPlayerCount > 0 || swePlayerCount > 0) {
+    const finScaled = finPlayerCount > 0 ? (finNightlyPoints / finPlayerCount).toFixed(2) : '0.00';
+    const sweScaled = swePlayerCount > 0 ? (sweNightlyPoints / swePlayerCount).toFixed(2) : '0.00';
+    tweet += `(Per player: 🇫🇮 ${finPlayerCount}p, ${finScaled} | 🇸🇪 ${swePlayerCount}p, ${sweScaled})\n\n`;
   }
 
   // Append a unique timestamp to the tweet content for debugging duplicate issues
