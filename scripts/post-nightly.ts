@@ -132,8 +132,8 @@ async function main() {
   tweet += `🇫🇮 ${finSeasonGoals} G, ${finSeasonAssists} A, ${finSeasonPoints} P (${finSeasonWins} voittoa)\n`;
   tweet += `🇸🇪 ${sweSeasonGoals} G, ${sweSeasonAssists} A, ${sweSeasonPoints} P (${sweSeasonWins} voittoa)\n\n`;
 
-  // Reintroduce the hashtags
-  tweet += `#nhlfi #nhlsv #Finnkampen #jääkiekko #ishockey #leijonat #trekronor`;
+  // REDUCED HASHTAGS FOR DEBUGGING
+  tweet += `#nhlfi #nhlsv`; // Only two hashtags
 
   // Append a unique timestamp to the tweet content for debugging duplicate issues
   tweet += `\n\n(Debug ID: ${new Date().toISOString()})`;
