@@ -26,7 +26,7 @@ jobs:
     - name: Install dependencies
       run: npm install
 
-    - name: Set processing date # MODIFIED: New step to handle date calculation
+    - name: Set processing date
       id: set_date
       run: |
         if [ -n "${{ github.event.inputs.date }}" ]; then
@@ -41,24 +41,27 @@ jobs:
 
     - name: Debug Environment Variables
       run: |
+        echo "DATABASE_URL: ${DATABASE_URL}"
         echo "TWITTER_APP_KEY: ${TWITTER_APP_KEY}"
         echo "TWITTER_APP_SECRET: ${TWITTER_APP_SECRET}"
         echo "TWITTER_ACCESS_TOKEN: ${TWITTER_ACCESS_TOKEN}"
         echo "TWITTER_ACCESS_SECRET: ${TWITTER_ACCESS_SECRET}"
-        echo "TWITTER_ENABLE: ${TWITTER_ENABLE}"
-        echo "PROCESSING_DATE: ${PROCESSING_DATE}" # ADDED: Log the determined date
+        echo "TWITTER_ENABLE: ${TWITTER_ENABLE}" # Now directly set
+        echo "PROCESSING_DATE: ${PROCESSING_DATE}"
       env:
+        DATABASE_URL: ${{ secrets.DATABASE_URL }}
         TWITTER_APP_KEY: ${{ secrets.TWITTER_APP_KEY }}
         TWITTER_APP_SECRET: ${{ secrets.TWITTER_APP_SECRET }}
-        TWITTER_ACCESS_SECRET: ${{ secrets.TWITTER_ACCESS_SECRET }}
         TWITTER_ACCESS_TOKEN: ${{ secrets.TWITTER_ACCESS_TOKEN }}
-        TWITTER_ENABLE: ${{ secrets.TWITTER_ENABLE }}
+        TWITTER_ACCESS_SECRET: ${{ secrets.TWITTER_ACCESS_SECRET }}
+        TWITTER_ENABLE: '1' # Set directly here
 
     - name: Run post:nightly script
-      run: npm run post:nightly -- --date ${{ env.PROCESSING_DATE }} # MODIFIED: Use the determined date
+      run: npm run post:nightly -- --date ${{ env.PROCESSING_DATE }}
       env:
+        DATABASE_URL: ${{ secrets.DATABASE_URL }}
         TWITTER_APP_KEY: ${{ secrets.TWITTER_APP_KEY }}
         TWITTER_APP_SECRET: ${{ secrets.TWITTER_APP_SECRET }}
         TWITTER_ACCESS_TOKEN: ${{ secrets.TWITTER_ACCESS_TOKEN }}
         TWITTER_ACCESS_SECRET: ${{ secrets.TWITTER_ACCESS_SECRET }}
-        TWITTER_ENABLE: ${{ secrets.TWITTER_ENABLE }}
+        TWITTER_ENABLE: '1' # Set directly here
