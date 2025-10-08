@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import { pool } from '../src/lib/db.js';
-import { seasonFromDate } from '../src/ingest.js'; // Import seasonFromDate
+import { seasonFromDate } from '../src/lib/util.js';
 
 function arg(name: string, def: string): string {
   const i = process.argv.indexOf(name);
@@ -23,13 +23,13 @@ async function main() {
 
   for (const row of nightlyAggsRes.rows) {
     if (row.nation === 'FIN') {
-      finNightlyGoals = row.goals;
-      finNightlyAssists = row.assists;
-      finPlayerCount = row.player_count;
+      finNightlyGoals = Number(row.goals); // MODIFIED: Convert to number
+      finNightlyAssists = Number(row.assists); // MODIFIED: Convert to number
+      finPlayerCount = Number(row.player_count); // MODIFIED: Convert to number
     } else if (row.nation === 'SWE') {
-      sweNightlyGoals = row.goals;
-      sweNightlyAssists = row.assists;
-      swePlayerCount = row.player_count;
+      sweNightlyGoals = Number(row.goals); // MODIFIED: Convert to number
+      sweNightlyAssists = Number(row.assists); // MODIFIED: Convert to number
+      swePlayerCount = Number(row.player_count); // MODIFIED: Convert to number
     }
     if (row.night_winner) {
       nightlyWinner = row.night_winner;
@@ -48,31 +48,40 @@ async function main() {
 
   console.log(`[post] Determined gameType for ${date}: ${gameType}`);
 
-  // 3. Fetch season aggregates (goals, assists) up to this date from season_nation_agg
-  const seasonAggsRes = await pool.query(
-    `SELECT nation, goals, assists
-     FROM nhl.season_nation_agg
-     WHERE season = $1 AND game_type = $2`,
-    [season, gameType]
+  // 3. Calculate season aggregates (goals, assists) up to this date by summing player stats
+  const seasonGoalsAssistsRes = await pool.query(
+    `SELECT
+      p.birth_country AS nation,
+      COALESCE(SUM(s.goals), 0) AS goals,
+      COALESCE(SUM(s.assists), 0) AS assists
+    FROM nhl.player_game_stats s
+    JOIN nhl.games g ON s.game_id = g.id
+    JOIN nhl.players p ON s.player_id = p.id
+    WHERE g.season = $1
+      AND g.game_type = $2
+      AND g.game_date::DATE <= $3::DATE -- Filter up to the specified date
+      AND p.birth_country IN ('FIN', 'SWE')
+    GROUP BY p.birth_country;`,
+    [season, gameType, date]
   );
 
   let finSeasonGoals = 0, finSeasonAssists = 0;
   let sweSeasonGoals = 0, sweSeasonAssists = 0;
 
-  for (const row of seasonAggsRes.rows) {
+  for (const row of seasonGoalsAssistsRes.rows) {
     if (row.nation === 'FIN') {
-      finSeasonGoals = row.goals;
-      finSeasonAssists = row.assists;
+      finSeasonGoals = Number(row.goals); // MODIFIED: Convert to number
+      finSeasonAssists = Number(row.assists); // MODIFIED: Convert to number
     } else if (row.nation === 'SWE') {
-      sweSeasonGoals = row.goals;
-      sweSeasonAssists = row.assists;
+      sweSeasonGoals = Number(row.goals); // MODIFIED: Convert to number
+      sweSeasonAssists = Number(row.assists); // MODIFIED: Convert to number
     }
   }
 
   const finSeasonPoints = finSeasonGoals + finSeasonAssists;
   const sweSeasonPoints = sweSeasonGoals + sweSeasonAssists;
 
-  // 4. CRITICAL: Calculate season wins up to this date by counting distinct nightly winners
+  // 4. Calculate season wins up to this date by counting distinct nightly winners
   const seasonNightlyWinnersRes = await pool.query(
     `SELECT DISTINCT ON (nna.game_date) nna.night_winner
      FROM nhl.nightly_nation_agg nna

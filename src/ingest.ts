@@ -8,19 +8,21 @@ import {
   extractPlayerRowsFromBoxscore,
   tallyFromBoxscoreSummary,
   birthCountryFromLanding,
-} from './lib/nhl.js'; // Corrected import path
+} from './lib/nhl.js';
+import { seasonFromDate } from './lib/util.js'; // MODIFIED: Import seasonFromDate from util.js
 
 function arg(name: string, def: string): string {
   const i = process.argv.indexOf(name);
   return i >= 0 && process.argv[i + 1] ? process.argv[i + 1] : def;
 }
 
-function seasonFromDate(d: string) {
-  const [y, m] = d.split('-').map(Number);
-  const start = m >= 7 ? y : y - 1;
-  const end = start + 1;
-  return `${start}${end}`;
-}
+// REMOVED: The seasonFromDate function is now in src/lib/util.ts
+// export function seasonFromDate(d: string) {
+//   const [y, m] = d.split('-').map(Number);
+//   const start = m >= 7 ? y : y - 1;
+//   const end = start + 1;
+//   return `${start}${end}`;
+// }
 
 async function main() {
   const date = arg('--date', new Date().toISOString().slice(0, 10)); // This is the date we want to process
@@ -42,7 +44,7 @@ async function main() {
       const awayId = await upsertTeamReturnId(tx, meta.away.nhl_id, meta.away.name, meta.away.abbr);
       const gameId = await upsertGameReturnId(tx, {
         nhl_game_pk: gamePk,
-        game_date: date, // MODIFIED: Use the ingest date here for consistency
+        game_date: date, // CRITICAL: Use the ingest date here for consistency
         season,
         game_type: gameType,
         home_team_id: homeId,
@@ -194,7 +196,7 @@ async function upsertPlayerGameStats(tx: any, stats: {
 async function computeNightlyAgg(client: any, date: string) { // 'date' here is the ingest date
   const dataToUpsertRes = await client.query(
     `SELECT
-      $1::DATE AS game_date, -- MODIFIED: Use the passed 'date' argument for game_date
+      g.game_date AS game_date, -- MODIFIED: Select from games table directly
       p.birth_country AS nation,
       COALESCE(SUM(s.goals), 0) AS goals,
       COALESCE(SUM(s.assists), 0) AS assists,
@@ -204,7 +206,7 @@ async function computeNightlyAgg(client: any, date: string) { // 'date' here is 
     JOIN nhl.games g ON s.game_id = g.id
     JOIN nhl.players p ON s.player_id = p.id
     WHERE g.game_date = $1 AND p.birth_country IN ('FIN', 'SWE') -- Filter games by the ingest date
-    GROUP BY p.birth_country;`, // Group only by nation, as game_date is fixed to $1
+    GROUP BY g.game_date, p.birth_country;`, // MODIFIED: Group by g.game_date
     [date] // Pass the ingest date as $1
   );
 
@@ -216,7 +218,7 @@ async function computeNightlyAgg(client: any, date: string) { // 'date' here is 
   for (const nation of nationsToEnsure) {
     if (!nationsPresent.has(nation)) {
       dataToUpsertRes.rows.push({
-        game_date: date, // Use the consistent ingest date
+        game_date: date, // Use the consistent ingest date for missing nations
         nation: nation,
         goals: 0,
         assists: 0,
@@ -340,9 +342,9 @@ async function updateSeasonWins(client: any, date: string) {
 
 
   for (const gt of distinctGameTypes) {
-    // MODIFIED: Select DISTINCT game_date and night_winner to avoid double-counting
+    // MODIFIED: Use DISTINCT ON (nna.game_date) to ensure only one winner is counted per day
     const seasonNightlyWinnersRes = await client.query(
-      `SELECT DISTINCT nna.game_date, nna.night_winner
+      `SELECT DISTINCT ON (nna.game_date) nna.night_winner
        FROM nhl.nightly_nation_agg nna
        WHERE nna.game_date::DATE <= $1::DATE
          AND nna.night_winner IS NOT NULL
@@ -352,7 +354,8 @@ async function updateSeasonWins(client: any, date: string) {
            WHERE g.game_date::DATE = nna.game_date::DATE
              AND g.game_type = $2
              AND g.season = $3
-         )`,
+         )
+       ORDER BY nna.game_date, nna.nation`, // ORDER BY is required for DISTINCT ON
       [date, gt, season]
     );
 
@@ -387,8 +390,13 @@ async function updateSeasonWins(client: any, date: string) {
   }
 }
 
-main().catch((e) => {
-  console.error(e);
-  pool.end(); // Ensure pool is ended on error
-  process.exit(1);
-});
+main()
+  .then(async () => { // MODIFIED: Added async and await pool.end()
+    await pool.end(); // Explicitly end the pool on successful completion
+    process.exit(0);
+  })
+  .catch((e) => {
+    console.error(e);
+    // pool.end(); // REMOVED: No need to call pool.end() here, process.exit will clean up
+    process.exit(1);
+  });
