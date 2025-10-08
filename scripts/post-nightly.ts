@@ -110,11 +110,14 @@ async function main() {
     }
   }
 
-  // --- TEMPORARY: SIMPLIFIED TWEET CONTENT FOR DEBUGGING ---
-  // The original tweet formatting block is commented out or removed.
-  const debugTimestamp = new Date().toISOString();
-  const tweet = `NHL Bot Test Tweet from post-nightly.ts - ${debugTimestamp} #NHLTest`;
-  // --- END TEMPORARY SIMPLIFIED TWEET CONTENT ---
+  // --- REINTRODUCING TWEET CONTENT GRADUALLY ---
+  let tweet = `NHL i går kväll / viime yö:  ${date}\n\n`;
+  tweet += `🇫🇮 FIN  ${finNightlyGoals} G, ${finNightlyAssists} A, ${finNightlyPoints} P\n`;
+  tweet += `🇸🇪 SWE ${sweNightlyGoals} G, ${sweNightlyAssists} A, ${sweNightlyPoints} P\n`;
+
+  // Append a unique timestamp to the tweet content for debugging duplicate issues
+  tweet += `\n\n(Debug ID: ${new Date().toISOString()})`;
+  // --- END REINTRODUCING TWEET CONTENT ---
 
 
   if (process.env.TWITTER_ENABLE === '1') {
