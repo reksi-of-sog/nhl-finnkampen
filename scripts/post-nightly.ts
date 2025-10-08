@@ -1,7 +1,7 @@
-import 'dotenv/config';
+import 'dotenv/config'; // To load environment variables from .env
 import { pool } from '../src/lib/db.js';
 import { seasonFromDate } from '../src/lib/util.js';
-import { TwitterApi } from 'twitter-api-v2'; // Ensure this import is present
+import { TwitterApi } from 'twitter-api-v2';
 
 function arg(name: string, def: string): string {
   const i = process.argv.indexOf(name);
@@ -110,40 +110,20 @@ async function main() {
     }
   }
 
-  // Format the tweet
-  let tweet = `NHL i går kväll / viime yö:  ${date}\n\n`;
-  tweet += `🇫🇮 FIN  ${finNightlyGoals} G, ${finNightlyAssists} A, ${finNightlyPoints} P\n`;
-  tweet += `🇸🇪 SWE ${sweNightlyGoals} G, ${sweNightlyAssists} A, ${sweNightlyPoints} P\n`;
+  // --- TEMPORARY: SIMPLIFIED TWEET CONTENT FOR DEBUGGING ---
+  // The original tweet formatting block is commented out or removed.
+  const debugTimestamp = new Date().toISOString();
+  const tweet = `NHL Bot Test Tweet from post-nightly.ts - ${debugTimestamp} #NHLTest`;
+  // --- END TEMPORARY SIMPLIFIED TWEET CONTENT ---
 
-  if (nightlyWinner) {
-    tweet += `${nightlyWinner === 'FIN' ? '🇫🇮' : '🇸🇪'} voitti illan/vann kvällen!\n\n`;
-  } else {
-    tweet += `Ingen vinnare / Ei voittajaa (inga spelare / ei pelaajia)\n\n`;
-  }
-
-  if (finPlayerCount > 0 || swePlayerCount > 0) {
-    const finScaled = finPlayerCount > 0 ? (finNightlyPoints / finPlayerCount).toFixed(2) : '0.00';
-    const sweScaled = swePlayerCount > 0 ? (sweNightlyPoints / swePlayerCount).toFixed(2) : '0.00';
-    tweet += `(Per player: 🇫🇮 ${finPlayerCount}p, ${finScaled} | 🇸🇪 ${swePlayerCount}p, ${sweScaled})\n\n`;
-  }
-
-  const seasonLabel = gameType === 'PR' ? 'Pre-season' : 'Regular Season';
-  tweet += `${seasonLabel}:\n`;
-  tweet += `🇫🇮 ${finSeasonGoals} G, ${finSeasonAssists} A, ${finSeasonPoints} P (${finSeasonWins} voittoa)\n`;
-  tweet += `🇸🇪 ${sweSeasonGoals} G, ${sweSeasonAssists} A, ${sweSeasonPoints} P (${sweSeasonWins} voittoa)\n\n`;
-
-  tweet += `#nhlfi #nhlsv #Finnkampen #jääkiekko #ishockey #leijonat #trekronor`;
-
-  // ADDED: Append a unique timestamp to the tweet content for debugging duplicate issues
-  tweet += `\n\n(Debug ID: ${new Date().toISOString()})`;
 
   if (process.env.TWITTER_ENABLE === '1') {
     console.log(`[post] Sending tweet:\n${tweet}`);
-    console.log('[post:debug] Attempting to initialize Twitter client...'); // ADDED LOG
+    console.log('[post:debug] Attempting to initialize Twitter client...');
     try {
       // Ensure all environment variables are defined
       if (!process.env.TWITTER_APP_KEY || !process.env.TWITTER_APP_SECRET || !process.env.TWITTER_ACCESS_TOKEN || !process.env.TWITTER_ACCESS_SECRET) {
-        console.error('[post:error] Missing one or more Twitter API credentials in environment variables.'); // ADDED LOG
+        console.error('[post:error] Missing one or more Twitter API credentials in environment variables.');
         return; // Exit early if credentials are missing
       }
 
@@ -153,13 +133,13 @@ async function main() {
         accessToken: process.env.TWITTER_ACCESS_TOKEN!,
         accessSecret: process.env.TWITTER_ACCESS_SECRET!,
       });
-      console.log('[post:debug] Twitter client initialized. Attempting to send tweet...'); // ADDED LOG
+      console.log('[post:debug] Twitter client initialized. Attempting to send tweet...');
 
       await client.v2.tweet(tweet);
       console.log('[post] Tweet sent successfully!');
     } catch (error) {
-      console.error('[post:error] Error sending tweet:', error); // MODIFIED LOG to be more explicit
-      if (error instanceof Error) { // ADDED: Log specific error properties if available
+      console.error('[post:error] Error sending tweet:', error);
+      if (error instanceof Error) {
         console.error('[post:error] Error name:', error.name);
         console.error('[post:error] Error message:', error.message);
         if ('code' in error) console.error('[post:error] Error code:', (error as any).code);
