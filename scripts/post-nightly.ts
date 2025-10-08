@@ -132,7 +132,7 @@ async function main() {
   tweet += `🇫🇮 ${finSeasonGoals} G, ${finSeasonAssists} A, ${finSeasonPoints} Pts (${finSeasonWins} wins)\n`;
   tweet += `🇸🇪 ${sweSeasonGoals} G, ${sweSeasonAssists} A, ${sweSeasonPoints} Pts (${sweSeasonWins} wins)\n\n`;
 
-  // Determine which hashtag to use based on the day of the month
+  // Determine which hashtag to use based on the day of the month. Just two hashtags to choose from.
   const dayOfMonth = new Date(date).getDate();
   if (dayOfMonth % 2 === 0) { // Even day
     tweet += `#nhlfi`;
