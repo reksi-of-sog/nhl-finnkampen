@@ -40,14 +40,20 @@ async function main() {
   const finNightlyPoints = finNightlyGoals + finNightlyAssists;
   const sweNightlyPoints = sweNightlyGoals + sweNightlyAssists;
 
-  // 2. Determine gameType for the date
-  const gameTypeRes = await pool.query(
-    `SELECT DISTINCT game_type FROM nhl.games WHERE game_date = $1 AND season = $2 LIMIT 1`,
-    [date, season]
+  // --- MODIFIED: Determine the current active gameType for the season up to this date ---
+  // First, check if there are any 'REG' (Regular Season) games in the current season up to the processing date.
+  const currentSeasonGameTypeRes = await pool.query(
+    `SELECT DISTINCT game_type FROM nhl.games
+     WHERE season = $1 AND game_date::DATE <= $2::DATE
+     ORDER BY game_type DESC LIMIT 1`, // 'REG' > 'PR', so DESC will prioritize REG
+    [season, date]
   );
-  const gameType = gameTypeRes.rows.length > 0 ? gameTypeRes.rows[0].game_type : 'PR'; // Default to PR if not found
+  // If a game type is found, use it. Otherwise, default to 'PR'.
+  const gameType = currentSeasonGameTypeRes.rows.length > 0 ? currentSeasonGameTypeRes.rows[0].game_type : 'PR';
 
-  console.log(`[post] Determined gameType for ${date}: ${gameType}`);
+  console.log(`[post] Determined season gameType for ${date}: ${gameType}`);
+  // --- END MODIFIED ---
+
 
   // 3. Calculate season aggregates (goals, assists) up to this date by summing player stats
   const seasonGoalsAssistsRes = await pool.query(
@@ -115,30 +121,34 @@ async function main() {
   tweet += `🇫🇮 FIN  ${finNightlyGoals} G, ${finNightlyAssists} A, ${finNightlyPoints} P\n`;
   tweet += `🇸🇪 SWE ${sweNightlyGoals} G, ${sweNightlyAssists} A, ${sweNightlyPoints} P\n`;
 
- if (finPlayerCount > 0 || swePlayerCount > 0) {
-    const finScaled = finPlayerCount > 0 ? (finNightlyPoints / finPlayerCount).toFixed(2) : '0.00';
-    const sweScaled = swePlayerCount > 0 ? (sweNightlyPoints / swePlayerCount).toFixed(2) : '0.00';
-    tweet += `(Per player: 🇫🇮 ${finPlayerCount}p, ${finScaled} | 🇸🇪 ${swePlayerCount}p, ${sweScaled})\n\n`;
-  }
-  
   if (nightlyWinner) {
     tweet += `${nightlyWinner === 'FIN' ? '🇫🇮' : '🇸🇪'} voitti illan/vann kvällen!\n\n`;
   } else {
     tweet += `Ingen vinnare / Ei voittajaa (inga spelare / ei pelaajia)\n\n`;
   }
 
+  if (finPlayerCount > 0 || swePlayerCount > 0) {
+    const finScaled = finPlayerCount > 0 ? (finNightlyPoints / finPlayerCount).toFixed(2) : '0.00';
+    const sweScaled = swePlayerCount > 0 ? (sweNightlyPoints / swePlayerCount).toFixed(2) : '0.00';
+    tweet += `(Per player: 🇫🇮 ${finPlayerCount}p, ${finScaled} | 🇸🇪 ${swePlayerCount}p, ${sweScaled})\n\n`;
+  }
+
+  // Use the correctly determined season gameType for the label
   const seasonLabel = gameType === 'PR' ? 'Pre-season' : 'Regular Season';
   tweet += `${seasonLabel}:\n`;
-  tweet += `🇫🇮 ${finSeasonGoals} G, ${finSeasonAssists} A, ${finSeasonPoints} Pts (${finSeasonWins} wins)\n`;
-  tweet += `🇸🇪 ${sweSeasonGoals} G, ${sweSeasonAssists} A, ${sweSeasonPoints} Pts (${sweSeasonWins} wins)\n\n`;
+  tweet += `🇫🇮 ${finSeasonGoals} G, ${finSeasonAssists} A, ${finSeasonPoints} P (${finSeasonWins} voittoa)\n`;
+  tweet += `🇸🇪 ${sweSeasonGoals} G, ${sweSeasonAssists} A, ${sweSeasonPoints} P (${sweSeasonWins} voittoa)\n\n`;
 
-  // Determine which hashtag to use based on the day of the month. Just two hashtags to choose from.
+  // Determine which hashtag to use based on the day of the month
   const dayOfMonth = new Date(date).getDate();
   if (dayOfMonth % 2 === 0) { // Even day
     tweet += `#nhlfi`;
   } else { // Odd day
-    tweet += `#nhlse`;
+    tweet += `#nhlsv`;
   }
+
+  // Append a unique timestamp to the tweet content for debugging duplicate issues
+  tweet += `\n\n(Debug ID: ${new Date().toISOString()})`;
   // --- END TWEET CONTENT ---
 
 
