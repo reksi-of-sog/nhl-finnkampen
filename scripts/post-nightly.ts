@@ -121,8 +121,12 @@ async function main() {
   tweet += `🇫🇮 FIN  ${finNightlyGoals} G, ${finNightlyAssists} A, ${finNightlyPoints} P\n`;
   tweet += `🇸🇪 SWE ${sweNightlyGoals} G, ${sweNightlyAssists} A, ${sweNightlyPoints} P\n`;
 
-  if (nightlyWinner) {
-    tweet += `${nightlyWinner === 'FIN' ? '🇫🇮' : '🇸🇪'} voitti illan/vann kvällen!\n\n`;
+   if (nightlyWinner === 'FIN') {
+    tweet += `🇫🇮 voitti illan/vann kvällen!\n\n`;
+  } else if (nightlyWinner === 'SWE') {
+    tweet += `🇸🇪 voitti illan/vann kvällen!\n\n`;
+  } else if (nightlyWinner === 'TIE') {
+    tweet += `Oavgjort / Tasapeli!\n\n`; // Or "Ingen vinnare / Ei voittajaa" if you prefer for a tie
   } else {
     tweet += `Ingen vinnare / Ei voittajaa (inga spelare / ei pelaajia)\n\n`;
   }
@@ -148,7 +152,7 @@ async function main() {
   }
 
   // Append a unique timestamp to the tweet content for debugging duplicate issues
-  tweet += `\n\n(Debug ID: ${new Date().toISOString()})`;
+  // tweet += `\n\n(Debug ID: ${new Date().toISOString()})`;
   // --- END TWEET CONTENT ---
 
 
