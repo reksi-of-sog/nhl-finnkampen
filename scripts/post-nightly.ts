@@ -121,6 +121,12 @@ async function main() {
   tweet += `🇫🇮 FIN  ${finNightlyGoals} G, ${finNightlyAssists} A, ${finNightlyPoints} P\n`;
   tweet += `🇸🇪 SWE ${sweNightlyGoals} G, ${sweNightlyAssists} A, ${sweNightlyPoints} P\n`;
 
+ if (finPlayerCount > 0 || swePlayerCount > 0) {
+    const finScaled = finPlayerCount > 0 ? (finNightlyPoints / finPlayerCount).toFixed(2) : '0.00';
+    const sweScaled = swePlayerCount > 0 ? (sweNightlyPoints / swePlayerCount).toFixed(2) : '0.00';
+    tweet += `(Per player: 🇫🇮 ${finPlayerCount}p, ${finScaled} | 🇸🇪 ${swePlayerCount}p, ${sweScaled})\n\n`;
+  }
+
    if (nightlyWinner === 'FIN') {
     tweet += `🇫🇮 voitti illan/vann kvällen!\n\n`;
   } else if (nightlyWinner === 'SWE') {
@@ -131,11 +137,7 @@ async function main() {
     tweet += `Ingen vinnare / Ei voittajaa (inga spelare / ei pelaajia)\n\n`;
   }
 
-  if (finPlayerCount > 0 || swePlayerCount > 0) {
-    const finScaled = finPlayerCount > 0 ? (finNightlyPoints / finPlayerCount).toFixed(2) : '0.00';
-    const sweScaled = swePlayerCount > 0 ? (sweNightlyPoints / swePlayerCount).toFixed(2) : '0.00';
-    tweet += `(Per player: 🇫🇮 ${finPlayerCount}p, ${finScaled} | 🇸🇪 ${swePlayerCount}p, ${sweScaled})\n\n`;
-  }
+ 
 
   // Use the correctly determined season gameType for the label
   const seasonLabel = gameType === 'PR' ? 'Pre-season' : 'Regular Season';
