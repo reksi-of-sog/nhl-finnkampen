@@ -20,10 +20,10 @@ function arg(name: string, def: string): string {
 // This is a heuristic to override potentially incorrect 'PR' gameType from API
 function isLikelyRegularSeasonStart(gameDate: string): boolean {
   const [, month] = gameDate.split('-').map(Number);
-  // NHL regular season typically starts in early October.
-  // We'll consider any game in October (month 10) or later as potentially 'REG'
-  // if the API still reports 'PR'.
-  return month >= 10;
+  // NHL regular season typically runs from October through April.
+  // We'll consider any game in October (month 10) through April (month 4)
+  // as potentially 'REG' if the API still reports 'PR'.
+  return month >= 10 || month <= 4;
 }
 
 async function main() {
